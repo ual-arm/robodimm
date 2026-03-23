@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robodimm - Robot Actuator Sizing Tool</title>
+  <link rel="stylesheet" href="styles/landing.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="landing-container">
+    <!-- Header -->
+    <header class="landing-header">
+      <div class="logo">
+        <span class="logo-icon">⚙️</span>
+        <span class="logo-text">Robodimm</span>
+      </div>
+      <nav class="nav-links">
+        <a href="https://github.com/ual-arm/robodimm" target="_blank">GitHub</a>
+        <a href="https://github.com/ual-arm/robodimm/blob/main/README.md" target="_blank">Documentation</a>
+      </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <main class="hero-section">
+      <div class="hero-content">
+        <h1 class="hero-title">
+          Robot Actuator Sizing<br>
+          <span class="gradient-text">Made Simple</span>
+        </h1>
+        <p class="hero-subtitle">
+          Design, simulate, and optimize industrial robot motions.<br>
+          Choose your mode to get started.
+        </p>
+      </div>
+
+      <!-- Mode Selection Cards -->
+      <div class="mode-cards">
+        <!-- DEMO Card -->
+        <div class="mode-card demo-card">
+          <div class="card-badge">Instant Access</div>
+          <div class="card-icon">🎮</div>
+          <h2 class="card-title">Demo Mode</h2>
+          <p class="card-description">
+            Try it right now in your browser. No installation, no login required.
+          </p>
+          <ul class="feature-list">
+            <li>✓ Joint jogging with sliders</li>
+            <li>✓ Save targets & create programs</li>
+            <li>✓ Execute MoveJ motions</li>
+            <li>✓ Smooth trapezoidal profiles</li>
+            <li>✓ Export/Import programs</li>
+          </ul>
+          <a href="simulator.html?mode=demo" class="card-button demo-button" id="demo-link">
+            Launch Demo
+            <span class="button-arrow">→</span>
+          </a>
+          <p class="port-hint">Works on any port</p>
+        </div>
+
+        <!-- PRO Card -->
+        <div class="mode-card pro-card">
+          <div class="card-badge featured">Full Power</div>
+          <div class="card-icon">🔧</div>
+          <h2 class="card-title">Pro Mode</h2>
+          <p class="card-description">
+            Full-featured simulation with Pinocchio dynamics and actuator sizing.
+          </p>
+          <ul class="feature-list">
+            <li>✓ Everything in Demo, plus:</li>
+            <li>✓ Cartesian jogging with IK</li>
+            <li>✓ MoveL and MoveC motions</li>
+            <li>✓ Dynamics analysis & plotting</li>
+            <li>✓ Automatic actuator selection</li>
+            <li>✓ Workspace obstacle import</li>
+          </ul>
+          <a href="#" class="card-button pro-button" id="pro-link">
+            Launch Pro
+            <span class="button-arrow">→</span>
+          </a>
+          <p class="login-hint">Login: admin / robotics</p>
+          <p class="port-hint pro-port">Requires port 8000 (backend)</p>
+        </div>
+      </div>
+
+      <!-- Info Section -->
+      <div class="info-section">
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-icon">🤖</div>
+            <h3>CR4 & CR6 Robots</h3>
+            <p>4-DOF palletizer and 6-DOF spherical wrist with accurate kinematics</p>
+          </div>
+          <div class="info-item">
+            <div class="info-icon">📊</div>
+            <h3>Dynamics Analysis</h3>
+            <p>Compute torques, velocities, and accelerations along trajectories</p>
+          </div>
+          <div class="info-item">
+            <div class="info-icon">⚡</div>
+            <h3>Actuator Sizing</h3>
+            <p>Select optimal motor+gearbox combinations with safety margins</p>
+          </div>
+          <div class="info-item">
+            <div class="info-icon">💾</div>
+            <h3>Program Portability</h3>
+            <p>Create in Demo, refine in Pro. Export and import programs as JSON</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+      <p>Built with FastAPI, Pinocchio, and Three.js</p>
+      <p class="copyright">© 2025 Robodimm Project</p>
+    </footer>
+  </div>
+
+  <script src="js/landing.js"></script>
+</body>
+</html>

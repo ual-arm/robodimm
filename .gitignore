@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.ruff_cache/
+node_modules/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+environment.yml.bak
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific data (optional, but usually ignored if it's user-generated)
+# saved_configs/
+# saved_libraries/
+# saved_programs/
+# station/*.gltf
+# station/*.obj
+# station/*.stl
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Backup and temporary files
+*_original.py
+*_modular_template.py
+*_backup.py
+*.bak
+REFACTORING_PLAN.md
+
+# Local AI / assistant workspace files
+AGENTS.md
+.opencode/
+opencode.json
+session-ses_*.md
+.aider*
+.claude/
+.continue/
+.roo/
+.windsurf/
+.cursor/

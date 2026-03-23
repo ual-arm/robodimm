@@ -1,0 +1,18 @@
+# Core dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.6
+
+# Scientific computing
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Robotics (install via conda-forge for easier installation)
+# pinocchio>=2.6.0
+# pink>=1.0.0
+
+# Note: Pinocchio and PINK are recommended to install via conda-forge:
+# conda install -c conda-forge pinocchio pink
+# Or on Ubuntu/Debian:
+# sudo apt install libpinocchio-dev

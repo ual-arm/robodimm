@@ -1,0 +1,605 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Robodimm - Robot Actuator Sizing Tool</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+
+<body>
+  <!-- Login Modal -->
+  <div class="modal-overlay active" id="login-overlay" style="z-index: 1000; background: #0f0f1a;">
+    <div class="edit-modal active" style="text-align: center; border: 1px solid #00d4ff; box-shadow: 0 0 20px rgba(0,212,255,0.2);">
+      <h2 style="color: #00d4ff; margin-bottom: 20px;">🤖 Robodimm Access</h2>
+      <div class="param-row" style="margin-bottom: 15px;">
+        <input type="text" id="login_user" placeholder="Username" style="width: 100%; padding: 10px; font-size: 14px;">
+      </div>
+      <div class="param-row" style="margin-bottom: 20px;">
+        <input type="password" id="login_pass" placeholder="Password" style="width: 100%; padding: 10px; font-size: 14px;">
+      </div>
+      <button id="login_btn" class="success" style="width: 100%; padding: 10px; font-size: 14px;">LOGIN</button>
+      <div id="login_error" style="color: #ff6b6b; margin-top: 15px; font-size: 12px; height: 15px;"></div>
+    </div>
+  </div>
+
+  <div class="main-container">
+    <!-- 3D Viewer (main focus) -->
+    <div class="viewer-panel">
+      <div class="viewer-header">
+        <h1>⚙️ Robodimm</h1>
+        <div class="status-indicator">
+          <span id="ws_status_text">Disconnected</span>
+          <div class="status-dot" id="ws_status_dot"></div>
+        </div>
+      </div>
+
+      <div id="scene">
+        <div class="viewer-overlay">
+          <div class="coord"><span class="label">EE Position:</span></div>
+          <div class="coord">X: <span class="value" id="ee_x">0.000</span></div>
+          <div class="coord">Y: <span class="value" id="ee_y">0.000</span></div>
+          <div class="coord">Z: <span class="value" id="ee_z">0.000</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control Panel (right side) -->
+    <div class="control-panel" id="control-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="jog">JOG</button>
+        <button class="tab" data-tab="program">PROGRAM</button>
+        <button class="tab" data-tab="dynamics">DYNAMICS</button>
+        <button class="tab" data-tab="actuators">ACTUATORS</button>
+        <button class="tab" data-tab="config">CONFIG</button>
+      </div>
+
+      <!-- JOG Tab -->
+      <div class="tab-content active" id="tab-jog">
+        <div class="section">
+          <h3>Frame Reference</h3>
+          <div class="frame-toggle">
+            <div class="frame-btn active" data-frame="base">BASE</div>
+            <div class="frame-btn" data-frame="ee">TOOL</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Joint Jog (with sliders)</h3>
+          <div class="slider-container">
+            <label>J1</label>
+            <input type="range" id="slider_j0" min="-3.14" max="3.14" step="0.01" value="0">
+            <span class="slider-value" id="slider_j0_val">0.00</span>
+          </div>
+          <div class="slider-container">
+            <label>J2</label>
+            <input type="range" id="slider_j1" min="-2.5" max="2.5" step="0.01" value="0">
+            <span class="slider-value" id="slider_j1_val">0.00</span>
+          </div>
+          <div class="slider-container">
+            <label>J3</label>
+            <input type="range" id="slider_j2" min="-2.5" max="2.5" step="0.01" value="0">
+            <span class="slider-value" id="slider_j2_val">0.00</span>
+          </div>
+          <div class="slider-container">
+            <label>J4</label>
+            <input type="range" id="slider_j3" min="-6.28" max="6.28" step="0.01" value="0">
+            <span class="slider-value" id="slider_j3_val">0.00</span>
+          </div>
+          <div class="slider-container">
+            <label>J5</label>
+            <input type="range" id="slider_j4" min="-6.28" max="6.28" step="0.01" value="0">
+            <span class="slider-value" id="slider_j4_val">0.00</span>
+          </div>
+          <div class="slider-container">
+            <label>J6</label>
+            <input type="range" id="slider_j5" min="-6.28" max="6.28" step="0.01" value="0">
+            <span class="slider-value" id="slider_j5_val">0.00</span>
+          </div>
+          <div class="param-row" style="margin-top:8px;">
+            <label>Delta:</label>
+            <input id="jog_joint_delta" type="number" value="0.05" step="0.01" min="0.001">
+            <span style="color:#888; font-size:10px;">rad</span>
+          </div>
+          <div class="jog-grid">
+            <button class="jog-btn" id="jog_j0_minus">J1-</button>
+            <button class="jog-btn" id="jog_j0_plus">J1+</button>
+            <button class="jog-btn" id="jog_j1_minus">J2-</button>
+            <button class="jog-btn" id="jog_j1_plus">J2+</button>
+            <button class="jog-btn" id="jog_j2_minus">J3-</button>
+            <button class="jog-btn" id="jog_j2_plus">J3+</button>
+            <button class="jog-btn" id="jog_j3_minus">J4-</button>
+            <button class="jog-btn" id="jog_j3_plus">J4+</button>
+            <button class="jog-btn" id="jog_j4_minus">J5-</button>
+            <button class="jog-btn" id="jog_j4_plus">J5+</button>
+            <button class="jog-btn" id="jog_j5_minus">J6-</button>
+            <button class="jog-btn" id="jog_j5_plus">J6+</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Cartesian Jog</h3>
+          <div class="param-row">
+            <label>Delta:</label>
+            <input id="jog_cart_delta" type="number" value="0.01" step="0.001" min="0.001">
+            <span style="color:#888; font-size:10px;">m</span>
+          </div>
+          <div class="jog-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <button class="jog-btn" id="jog_x_minus">X-</button>
+            <button class="jog-btn" id="jog_y_minus">Y-</button>
+            <button class="jog-btn" id="jog_z_minus">Z-</button>
+            <button class="jog-btn" id="jog_x_plus">X+</button>
+            <button class="jog-btn" id="jog_y_plus">Y+</button>
+            <button class="jog-btn" id="jog_z_plus">Z+</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Orientation Jog</h3>
+          <div class="param-row">
+            <label>Delta:</label>
+            <input id="jog_ori_delta" type="number" value="0.05" step="0.01" min="0.001">
+            <span style="color:#888; font-size:10px;">rad</span>
+          </div>
+          <div class="jog-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <button class="jog-btn" id="jog_r_minus">Rx-</button>
+            <button class="jog-btn" id="jog_p_minus">Ry-</button>
+            <button class="jog-btn" id="jog_yaw_minus">Rz-</button>
+            <button class="jog-btn" id="jog_r_plus">Rx+</button>
+            <button class="jog-btn" id="jog_p_plus">Ry+</button>
+            <button class="jog-btn" id="jog_yaw_plus">Rz+</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>💾 Save Target</h3>
+          <div class="param-row">
+            <input id="target_name" type="text" placeholder="Target name" value="T1" style="flex:2;">
+            <button id="save_target" class="success">Save</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Direct Input</h3>
+          <div class="param-row">
+            <label>Joints:</label>
+            <input id="joint_input" type="text" value="0,0,0,0,0,0" style="flex:2;">
+            <button id="set_joint" class="secondary" style="padding:6px 10px;">Set</button>
+          </div>
+          <div class="param-row">
+            <label>XYZ:</label>
+            <input id="target_input" type="text" value="0.25,0,0.8" style="flex:2;">
+            <button id="move_linear" class="secondary" style="padding:6px 10px;">Go</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROGRAM Tab -->
+      <div class="tab-content" id="tab-program">
+        <div class="section">
+          <h3>Targets</h3>
+          <div class="tree-container" id="targets-tree"></div>
+        </div>
+
+        <div class="section">
+          <h3>Instruction Parameters</h3>
+          <div class="param-row">
+            <label>Type:</label>
+            <select id="instr_type">
+              <option value="MoveJ">MoveJ</option>
+              <option value="MoveL">MoveL</option>
+              <option value="MoveC">MoveC</option>
+              <option value="Pause">Pause</option>
+            </select>
+          </div>
+          <div class="param-row" id="speed_row">
+            <label>Speed:</label>
+            <input id="instr_speed" type="number" value="100" min="1" max="2000">
+          </div>
+          <div class="param-row" id="zone_row">
+            <label>Zone:</label>
+            <input id="instr_zone" type="number" value="50" min="0" max="100">
+          </div>
+          <div class="param-row" id="pause_row" style="display:none;">
+            <label>Time:</label>
+            <input id="instr_pause_time" type="number" value="1" min="0.1" max="60" step="0.1">
+            <span style="color:#888; font-size:10px;">seconds</span>
+          </div>
+          <div class="param-row" id="via_row" style="display:none;">
+            <label>Via:</label>
+            <select id="instr_via_target"></select>
+          </div>
+          <button id="add_pause_btn" class="secondary" style="display:none; margin-top:8px; width:100%;">+ Add
+            Pause</button>
+        </div>
+
+        <div class="section">
+          <h3>Program</h3>
+          <div class="drop-zone tree-container" id="program-tree">
+            <div class="drop-placeholder">Drag targets here to create instructions</div>
+          </div>
+          <div class="play-controls">
+            <button id="play_program" class="play-btn success">▶ PLAY</button>
+            <button id="clear_program" class="danger" style="padding:12px;">🗑️</button>
+          </div>
+          <div class="param-row" style="margin-top:8px;">
+            <label>Speed:</label>
+            <input id="speed_factor" type="number" value="1" min="0.1" max="10" step="0.1">
+            <span style="color:#888; font-size:10px;">x factor</span>
+          </div>
+        </div>
+
+        <div class="section" style="background:rgba(100,150,200,0.1); border:1px solid rgba(100,150,200,0.3);">
+          <h3>💾 Save / Load Program</h3>
+          <div class="param-row">
+            <label>Name:</label>
+            <input id="program_name" type="text" placeholder="my_program">
+          </div>
+          <div class="param-row">
+            <label>Desc:</label>
+            <input id="program_desc" type="text" placeholder="Description (optional)">
+          </div>
+          <div style="display:flex; gap:6px; margin-top:6px;">
+            <button id="save_program_btn" class="success" style="flex:1;">💾 Save</button>
+            <button id="refresh_programs_btn" class="secondary" style="flex:0 0 auto;">🔄</button>
+          </div>
+          <div id="saved_programs_list" style="margin-top:8px; max-height:120px; overflow-y:auto; font-size:11px;">
+            <div style="color:#888;">Click 🔄 to load saved programs</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DYNAMICS Tab -->
+      <div class="tab-content" id="tab-dynamics" style="position:relative;">
+        <button class="fullscreen-toggle secondary" id="toggle_fullscreen">⛶ Fullscreen</button>
+        <div class="section">
+          <h3>Trajectory Analysis</h3>
+          <div class="param-row">
+            <label>Variable:</label>
+            <select id="plot_variable">
+              <option value="tau">Torques (τ)</option>
+              <option value="q">Positions (q)</option>
+              <option value="v">Velocities (v)</option>
+              <option value="a">Accelerations (a)</option>
+            </select>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button id="plot_dynamics" style="flex:1;">📊 Plot</button>
+            <button id="export_csv" class="secondary" style="flex:1;">📥 CSV</button>
+          </div>
+        </div>
+
+        <div id="chart-container">
+          <canvas id="dynamics-chart"></canvas>
+        </div>
+
+        <div class="section" style="margin-top:10px;">
+          <h3>Joint State</h3>
+          <pre id="q_display">[]</pre>
+        </div>
+      </div>
+
+      <!-- ACTUATORS Tab -->
+      <div class="tab-content" id="tab-actuators">
+        <div class="section">
+          <h3>⚡ Actuator Selection</h3>
+          <p style="font-size:11px; color:#888; margin-bottom:10px;">
+            Execute a program first to analyze torque/speed requirements, then select optimal motor+gearbox
+            combinations.
+          </p>
+          <div class="param-row">
+            <label style="width:100px;">Torque SF:</label>
+            <input id="safety_factor_torque" type="number" value="1.5" min="1.0" max="3.0" step="0.1"
+              style="width:70px;">
+            <span style="color:#888; font-size:10px;">safety factor</span>
+          </div>
+          <div class="param-row">
+            <label style="width:100px;">Speed SF:</label>
+            <input id="safety_factor_speed" type="number" value="1.2" min="1.0" max="3.0" step="0.1"
+              style="width:70px;">
+            <span style="color:#888; font-size:10px;">safety factor</span>
+          </div>
+          <div class="param-row" style="margin-top:10px;">
+            <button id="btn_analyze_requirements" class="secondary" style="flex:1;">📊 Analyze Requirements</button>
+          </div>
+          <div class="param-row">
+            <button id="btn_select_actuators" class="success" style="flex:1;">🎯 Select Actuators</button>
+          </div>
+          <div class="param-row">
+            <button id="btn_validate_selection" class="secondary" style="flex:1;">🔄 Validate (2nd round with
+              masses)</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>📋 Joint Requirements</h3>
+          <div id="requirements-display" class="tree-container"
+            style="min-height:80px; max-height:200px; overflow-y:auto; font-size:11px;">
+            <p style="color:#888;">Execute program first</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>✅ Recommendations</h3>
+          <div id="validation-status"
+            style="font-size:10px; margin-bottom:6px; padding:4px; border-radius:3px; display:none;"></div>
+          <div id="actuator-recommendations" class="tree-container"
+            style="min-height:150px; max-height:300px; overflow-y:auto; font-size:11px;">
+            <p style="color:#888;">Click "Select Actuators" to see recommendations</p>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>🔧 Actuator Library</h3>
+          <div class="param-row">
+            <button id="btn_show_motors" class="secondary" style="flex:1; font-size:10px;">Motors</button>
+            <button id="btn_show_gearboxes" class="secondary" style="flex:1; font-size:10px;">Gearboxes</button>
+            <button id="btn_add_component" class="secondary" style="flex:1; font-size:10px;">+ Add</button>
+          </div>
+          <div id="library-display" class="tree-container"
+            style="min-height:100px; max-height:200px; overflow-y:auto; font-size:10px; margin-top:10px;">
+            <p style="color:#888;">Click Motors or Gearboxes to view</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONFIG Tab -->
+      <div class="tab-content" id="tab-config">
+        <div class="section">
+          <h3>🤖 Robot Configuration</h3>
+          <div class="param-row">
+            <label style="width:80px;">Type:</label>
+            <select id="robot_type_select">
+              <option value="CR4">CR4 Palletizer (4-DOF)</option>
+              <option value="CR6">CR6 Spherical Wrist (6-DOF)</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Scale:</label>
+            <input id="robot_scale_input" type="number" value="1.0" min="0.1" max="5.0" step="0.1" style="width:80px;">
+            <span style="color:#888; font-size:10px;">x reach factor</span>
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Payload:</label>
+            <input id="robot_payload_input" type="number" value="0.0" min="0" max="50" step="0.1" style="width:80px;">
+            <span style="color:#888; font-size:10px;">kg at TCP</span>
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Box XYZ:</label>
+            <input id="robot_payload_box_x_input" type="number" value="" min="0" step="0.01" placeholder="x" style="width:60px;">
+            <input id="robot_payload_box_y_input" type="number" value="" min="0" step="0.01" placeholder="y" style="width:60px;">
+            <input id="robot_payload_box_z_input" type="number" value="" min="0" step="0.01" placeholder="z" style="width:60px;">
+            <span style="color:#888; font-size:10px;">m</span>
+          </div>
+          <div style="font-size:9px; color:#666; margin-bottom:5px; padding-left:80px;">
+            Payload box dimensions [m]. Leave blank to let backend infer a default box from payload mass.
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">COM XYZ:</label>
+            <input id="robot_payload_com_x_input" type="number" value="" step="0.01" placeholder="x" style="width:60px;">
+            <input id="robot_payload_com_y_input" type="number" value="" step="0.01" placeholder="y" style="width:60px;">
+            <input id="robot_payload_com_z_input" type="number" value="" step="0.01" placeholder="z" style="width:60px;">
+            <span style="color:#888; font-size:10px;">m from TCP</span>
+          </div>
+          <div style="font-size:9px; color:#666; margin-bottom:5px; padding-left:80px;">
+            Center of mass offset from TCP [m]. Used directly, or together with the box model to compute payload inertia.
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Friction:</label>
+            <input id="robot_friction_input" type="text" value="" placeholder="0.5,0.8,0.6,0.2,0.15,0.1"
+              style="flex:1; font-size:10px;">
+          </div>
+          <div style="font-size:9px; color:#666; margin-bottom:5px; padding-left:80px;">
+            Viscous friction [Nm/(rad/s)] per joint (comma-separated). Leave blank for defaults.
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Iref:</label>
+            <input id="robot_reflected_inertia_input" type="text" value="" placeholder="0.896,0.896,0.432,0.07"
+              style="flex:1; font-size:10px;">
+          </div>
+          <div style="font-size:9px; color:#666; margin-bottom:5px; padding-left:80px;">
+            Reflected rotor inertia [kg*m²] per actuated joint (CR4: J1,J2,J3,J4).
+          </div>
+          <div class="param-row">
+            <label style="width:80px;">Coulomb:</label>
+            <input id="robot_coulomb_input" type="text" value="" placeholder="0.25,0.35,0.2,0.08"
+              style="flex:1; font-size:10px;">
+          </div>
+          <div style="font-size:9px; color:#666; margin-bottom:5px; padding-left:80px;">
+            Coulomb friction [Nm] per actuated joint (applied with sign(qd)).
+          </div>
+          <div class="param-row" style="margin-top:10px;">
+            <button id="apply_robot_config" class="success" style="flex:1;">Apply Configuration</button>
+          </div>
+          <div id="robot_config_info" style="margin-top:10px; font-size:11px; color:#888;"></div>
+        </div>
+
+        <div class="section">
+          <h3>🏭 Station Geometries</h3>
+          <div class="param-row">
+            <input type="file" id="station_gltf_file" accept=".gltf,.glb,.bin" style="display:none;">
+            <button id="import_station_geometry" class="secondary" style="flex:1;">📁 Import GLTF/GLB</button>
+          </div>
+          <div class="tree-container" id="station-geometries-list" style="margin-top:10px; min-height:100px;"></div>
+        </div>
+
+        <div class="section" id="station-geom-edit-section" style="display:none;">
+          <h3>📐 Edit Geometry</h3>
+          <div class="param-row">
+            <label style="width:50px;">Name:</label>
+            <span id="edit_geom_name" style="color:#00d4ff; font-size:12px;"></span>
+          </div>
+          <div class="param-row">
+            <label style="width:50px;">X:</label>
+            <input id="edit_geom_x" type="number" value="0" step="0.01" style="width:70px;">
+            <label style="width:50px;">Y:</label>
+            <input id="edit_geom_y" type="number" value="0" step="0.01" style="width:70px;">
+          </div>
+          <div class="param-row">
+            <label style="width:50px;">Z:</label>
+            <input id="edit_geom_z" type="number" value="0" step="0.01" style="width:70px;">
+            <label style="width:50px;">Scale:</label>
+            <input id="edit_geom_scale" type="number" value="1" step="0.1" min="0.01" style="width:70px;">
+          </div>
+          <div class="param-row">
+            <label style="width:50px;">Rx:</label>
+            <input id="edit_geom_rx" type="number" value="0" step="0.1" style="width:70px;">
+            <label style="width:50px;">Ry:</label>
+            <input id="edit_geom_ry" type="number" value="0" step="0.1" style="width:70px;">
+          </div>
+          <div class="param-row">
+            <label style="width:50px;">Rz:</label>
+            <input id="edit_geom_rz" type="number" value="0" step="0.1" style="width:70px;">
+          </div>
+          <div class="param-row" style="margin-top:10px;">
+            <button id="update_station_geom" class="success" style="flex:1;">Update</button>
+            <button id="delete_station_geom" class="danger" style="flex:1;">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Instruction Modal -->
+  <div class="modal-overlay" id="modal-overlay"></div>
+  <div class="edit-modal" id="edit-modal">
+    <h4>Edit Instruction</h4>
+    <div class="param-row">
+      <label>Type:</label>
+      <select id="edit_instr_type">
+        <option value="MoveJ">MoveJ</option>
+        <option value="MoveL">MoveL</option>
+        <option value="MoveC">MoveC</option>
+        <option value="Pause">Pause</option>
+      </select>
+    </div>
+    <div class="param-row" id="edit_target_row">
+      <label>Target:</label>
+      <select id="edit_instr_target"></select>
+    </div>
+    <div class="param-row" id="edit_speed_row">
+      <label>Speed:</label>
+      <input id="edit_instr_speed" type="number" value="100" min="1" max="2000">
+    </div>
+    <div class="param-row" id="edit_zone_row">
+      <label>Zone:</label>
+      <input id="edit_instr_zone" type="number" value="50" min="0" max="100">
+    </div>
+    <div class="param-row" id="edit_pause_row" style="display:none;">
+      <label>Time:</label>
+      <input id="edit_instr_pause_time" type="number" value="1" min="0.1" max="60" step="0.1">
+      <span style="color:#888; font-size:10px;">seconds</span>
+    </div>
+    <div class="modal-buttons">
+      <button id="cancel_edit" class="secondary">Cancel</button>
+      <button id="save_edit" class="success">Save</button>
+    </div>
+  </div>
+
+  <!-- Add/Edit Component Modal -->
+  <div class="edit-modal" id="component-modal" style="display:none; max-height:80vh; overflow-y:auto;">
+    <h4 id="component-modal-title">Add Component</h4>
+    <div id="component-modal-content">
+      <!-- Motor fields -->
+      <div id="motor-fields">
+        <div class="param-row">
+          <label style="width:120px;">ID*:</label>
+          <input id="motor_id" type="text" style="flex:1;" placeholder="e.g. MOTOR_500W">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Description:</label>
+          <input id="motor_desc" type="text" style="flex:1;" placeholder="e.g. 500W 2500rpm servo">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Flange (mm):</label>
+          <input id="motor_flange" type="number" style="width:70px;" placeholder="60">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Nom. Torque (Nm)*:</label>
+          <input id="motor_nom_torque" type="number" step="0.1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Peak Torque (Nm):</label>
+          <input id="motor_peak_torque" type="number" step="0.1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Nom. Speed (rpm)*:</label>
+          <input id="motor_nom_speed" type="number" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Max Speed (rpm):</label>
+          <input id="motor_max_speed" type="number" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Mass (kg):</label>
+          <input id="motor_mass" type="number" step="0.1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Length (mm):</label>
+          <input id="motor_length" type="number" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Compatible GB:</label>
+          <input id="motor_compatible" type="text" style="flex:1;" placeholder="ZXS20,ZXS25 (comma-separated)">
+        </div>
+      </div>
+      <!-- Gearbox fields -->
+      <div id="gearbox-fields" style="display:none;">
+        <div class="param-row">
+          <label style="width:120px;">ID*:</label>
+          <input id="gearbox_id" type="text" style="flex:1;" placeholder="e.g. ZXS30">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Description:</label>
+          <input id="gearbox_desc" type="text" style="flex:1;" placeholder="e.g. Harmonic drive servo 80mm">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">For Servo (mm):</label>
+          <input id="gearbox_servo" type="number" style="width:70px;" placeholder="80">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Ratios*:</label>
+          <input id="gearbox_ratios" type="text" style="flex:1;" placeholder="30,50,80,100 (comma-separated)">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Rated Torque (Nm):</label>
+          <input id="gearbox_rated_torque" type="number" step="1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Peak Torque (Nm):</label>
+          <input id="gearbox_peak_torque" type="number" step="1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Efficiency:</label>
+          <input id="gearbox_efficiency" type="number" step="0.01" min="0" max="1" style="width:70px;"
+            placeholder="0.9">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Mass (kg):</label>
+          <input id="gearbox_mass" type="number" step="0.1" style="width:70px;">
+        </div>
+        <div class="param-row">
+          <label style="width:120px;">Backlash (arcmin):</label>
+          <input id="gearbox_backlash" type="number" step="0.1" style="width:70px;">
+        </div>
+      </div>
+    </div>
+    <div class="modal-buttons">
+      <button id="cancel_component" class="secondary">Cancel</button>
+      <button id="save_component" class="success">Save</button>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="app.js?v=55"></script>
+</body>
+
+</html>

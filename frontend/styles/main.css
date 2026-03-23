@@ -1,0 +1,641 @@
+/* Robodimm - Main Stylesheet */
+/* Extracted from index.html for better maintainability */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #1a1a2e;
+  color: #eee;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Main layout */
+.main-container {
+  display: flex;
+  height: 100vh;
+}
+
+/* 3D Viewer - Left side (main focus) */
+.viewer-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #0f0f1a;
+  position: relative;
+  min-width: 0;
+}
+
+.viewer-header {
+  padding: 8px 16px;
+  background: #16213e;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+.viewer-header h1 {
+  font-size: 18px;
+  font-weight: 500;
+  color: #00d4ff;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #f00;
+}
+
+.status-dot.connected {
+  background: #0f0;
+}
+
+#scene {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.viewer-overlay {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  z-index: 10;
+}
+
+.viewer-overlay .coord {
+  margin: 2px 0;
+}
+
+.viewer-overlay .label {
+  color: #888;
+}
+
+.viewer-overlay .value {
+  color: #0f0;
+  font-family: monospace;
+}
+
+/* Right panel - Controls */
+.control-panel {
+  width: 380px;
+  min-width: 380px;
+  background: #16213e;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #333;
+}
+
+/* Fullscreen mode for dynamics */
+.control-panel.fullscreen-dynamics {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  min-width: 100%;
+  z-index: 100;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background: #0f0f1a;
+  border-bottom: 1px solid #333;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px 8px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  border: none;
+  background: transparent;
+  color: #888;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  color: #fff;
+  background: #1a1a3e;
+}
+
+.tab.active {
+  color: #00d4ff;
+  background: #16213e;
+  border-bottom: 2px solid #00d4ff;
+}
+
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Panels inside tabs */
+.section {
+  background: #1a1a3e;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.section h3 {
+  font-size: 13px;
+  color: #00d4ff;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #333;
+}
+
+/* Form elements */
+input,
+select {
+  background: #0f0f1a;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #00d4ff;
+}
+
+button {
+  background: #00d4ff;
+  color: #000;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+button:hover {
+  background: #00a8cc;
+}
+
+button:disabled {
+  background: #555;
+  color: #888;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: #333;
+  color: #fff;
+}
+
+button.secondary:hover {
+  background: #444;
+}
+
+button.danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+button.danger:hover {
+  background: #e74c3c;
+}
+
+button.success {
+  background: #27ae60;
+  color: #fff;
+}
+
+button.success:hover {
+  background: #2ecc71;
+}
+
+/* Jog buttons grid */
+.jog-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.jog-btn {
+  padding: 6px 4px;
+  font-size: 10px;
+  background: #333;
+  color: #fff;
+  user-select: none;
+}
+
+.jog-btn:hover {
+  background: #00d4ff;
+  color: #000;
+}
+
+.jog-btn:active {
+  background: #00a8cc;
+}
+
+/* Slider styling */
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.slider-container label {
+  width: 30px;
+  font-size: 11px;
+  color: #00d4ff;
+}
+
+.slider-container input[type="range"] {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #333;
+  height: 6px;
+  border-radius: 3px;
+  padding: 0;
+}
+
+.slider-container input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00d4ff;
+  cursor: pointer;
+}
+
+.slider-container .slider-value {
+  width: 50px;
+  font-size: 10px;
+  color: #888;
+  text-align: right;
+  font-family: monospace;
+}
+
+/* Trees */
+.tree-container {
+  min-height: 80px;
+  max-height: 150px;
+  overflow-y: auto;
+  background: #0f0f1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px;
+}
+
+.tree-item {
+  padding: 6px 8px;
+  margin: 2px 0;
+  background: #1a1a3e;
+  border-radius: 3px;
+  cursor: grab;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.tree-item:hover {
+  background: #00d4ff33;
+  border-left: 2px solid #00d4ff;
+}
+
+.tree-item.dragging {
+  opacity: 0.5;
+}
+
+.tree-item .target-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tree-item .target-name {
+  font-weight: 500;
+}
+
+.tree-item .target-coords {
+  font-size: 9px;
+  color: #888;
+  font-family: monospace;
+}
+
+.tree-item .target-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.tree-item .delete-target-btn {
+  cursor: pointer;
+  color: #e74c3c;
+  font-weight: bold;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.tree-item .delete-target-btn:hover {
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 3px;
+}
+
+.tree-item .jump-target-btn {
+  cursor: pointer;
+  color: #00d4ff;
+  font-weight: bold;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.tree-item .jump-target-btn:hover {
+  background: #00d4ff;
+  color: #000;
+  border-radius: 3px;
+}
+
+.program-item {
+  padding: 6px 8px;
+  margin: 2px 0;
+  background: #27ae6033;
+  border-left: 2px solid #27ae60;
+  border-radius: 3px;
+  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.program-item:hover {
+  background: #27ae6055;
+}
+
+.program-item.editing {
+  background: #f39c1233;
+  border-left-color: #f39c12;
+}
+
+.delete-btn {
+  cursor: pointer;
+  color: #e74c3c;
+  font-weight: bold;
+  padding: 2px 6px;
+}
+
+.delete-btn:hover {
+  background: #e74c3c;
+  color: #fff;
+  border-radius: 3px;
+}
+
+.drop-zone {
+  min-height: 80px;
+  border: 2px dashed #444;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.drop-zone.drag-over {
+  border-color: #00d4ff;
+  background: #00d4ff11;
+}
+
+.drop-placeholder {
+  color: #555;
+  font-size: 11px;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Edit instruction modal */
+.edit-modal {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a3e;
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid #00d4ff;
+  z-index: 200;
+  min-width: 300px;
+}
+
+.edit-modal.active {
+  display: block;
+}
+
+.edit-modal h4 {
+  color: #00d4ff;
+  margin-bottom: 15px;
+}
+
+.edit-modal .modal-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+  justify-content: flex-end;
+}
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 199;
+}
+
+.modal-overlay.active {
+  display: block;
+}
+
+/* Param rows */
+.param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.param-row label {
+  width: 60px;
+  color: #888;
+}
+
+.param-row input,
+.param-row select {
+  flex: 1;
+}
+
+/* Frame toggle */
+.frame-toggle {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.frame-btn {
+  flex: 1;
+  padding: 6px;
+  text-align: center;
+  background: #333;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.frame-btn.active {
+  background: #00d4ff;
+  color: #000;
+}
+
+/* Play controls */
+.play-controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.play-btn {
+  flex: 1;
+  padding: 12px;
+  font-size: 14px;
+}
+
+/* Chart container */
+#chart-container {
+  background: #0f0f1a;
+  border-radius: 6px;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+#dynamics-chart {
+  width: 100% !important;
+  height: 250px !important;
+}
+
+/* Fullscreen dynamics chart */
+.fullscreen-dynamics #chart-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-dynamics #dynamics-chart {
+  height: calc(100vh - 250px) !important;
+}
+
+/* Fullscreen toggle button */
+.fullscreen-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f0f1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Q display */
+#q_display {
+  background: #0f0f1a;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-family: monospace;
+  color: #0f0;
+  max-height: 80px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Dynamics display (DEMO mode) */
+.torque-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #1a1a2e;
+  border-radius: 4px;
+  border: 1px solid #333;
+}
+
+.torque-display .joint-label {
+  font-weight: bold;
+  color: #00d4ff;
+  font-size: 11px;
+}
+
+.torque-display .torque-value {
+  font-family: monospace;
+  font-size: 11px;
+  color: #44ff44;
+  transition: color 0.2s;
+}
+
+#demo-dynamics-panel {
+  display: none; /* Hidden by default, shown in DEMO mode via JS */
+}
+
+#demo-dynamics-panel.visible {
+  display: block;
+}

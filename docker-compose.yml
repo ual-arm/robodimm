@@ -1,0 +1,19 @@
+services:
+  robodimm:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./meshes:/app/meshes
+      - ./saved_configs:/app/saved_configs
+      - ./saved_libraries:/app/saved_libraries
+      - ./saved_programs:/app/saved_programs
+      - ./station:/app/station
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Load environment from .env.local or .env.server
+      - ENV=${ENV:-local}
+      - API_BASE_URL=${API_BASE_URL:-}
+      - BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}

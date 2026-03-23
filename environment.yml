@@ -1,0 +1,16 @@
+name: robodimm_env
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pip
+  - pinocchio
+  - pink
+  - numpy
+  - scipy
+  - fastapi
+  - uvicorn
+  - python-multipart
+  - hpp-fcl
+
