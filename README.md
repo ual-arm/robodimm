@@ -4,8 +4,17 @@
 
 <h1 align="center">Robodimm</h1>
 
+<h3 align="center">Robot Actuator Sizing Made Simple</h3>
+
 <p align="center">
-  <strong>A Physics-Grounded Framework for Automated Actuator Sizing in Scalable Modular Robots</strong>
+  Design, simulate, and optimize industrial robot motions.<br/>
+  Choose your mode to get started.
+</p>
+
+<p align="center">
+  <a href="https://commit-zeb.es/robot/" target="_blank">
+    <img alt="Live Demo" src="https://img.shields.io/badge/🌐%20live%20demo-commit--zeb.es%2Frobot-22c55e?style=for-the-badge"/>
+  </a>
 </p>
 
 <p align="center">
@@ -47,9 +56,19 @@ Key features:
 - Constrained inverse dynamics (KKT), actuator requirement analysis, and motor/gearbox selection.
 - Geometric scaling laws for structural mass/inertia with configurable exponents.
 
+## Live deployment
+
+Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)** — no installation required for DEMO mode, PRO mode available with login `admin` / `robotics`.
+
+[![Robodimm landing](docs/images/Robobimm_pro_demo.png)](https://commit-zeb.es/robot/)
+
 ## Interface
 
 ![Robodimm interface](docs/images/interfaz.png)
+
+**PRO mode demo** — real-time inverse dynamics, IK solver, and actuator sizing:
+
+<video src="docs/videos/demo_robodimm.mp4" controls width="100%"></video>
 
 ## Quick Start
 
