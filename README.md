@@ -58,7 +58,7 @@ Key features:
 
 ## Live deployment
 
-Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)** — no installation required for DEMO mode, PRO mode available with login `admin` / `robotics`.
+Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)**
 
 [![Robodimm landing](docs/images/Robobimm_pro_demo.png)](https://commit-zeb.es/robot/)
 
@@ -66,9 +66,9 @@ Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)** �
 
 ![Robodimm interface](docs/images/interfaz.png)
 
-**PRO mode demo** — real-time inverse dynamics, IK solver, and actuator sizing:
+**PRO mode demo** — real-time inverse dynamics, IK solver, and actuator sizing (click to play):
 
-<video src="docs/videos/demo_robodimm.mp4" controls width="100%"></video>
+[![PRO mode demo video](docs/images/interfaz.png)](docs/videos/demo_robodimm.mp4)
 
 ## Quick Start
 
