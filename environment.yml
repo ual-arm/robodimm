@@ -13,4 +13,5 @@ dependencies:
   - uvicorn
   - python-multipart
   - hpp-fcl
+  - pytest
 

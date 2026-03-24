@@ -1,15 +1,53 @@
-# Robodimm
+<p align="center">
+  <img src="docs/images/Robodimm.png" alt="Robodimm logo" width="280"/>
+</p>
 
-Robodimm is a web application for robot motion programming, inverse dynamics, and actuator sizing for scalable industrial robots.
+<h1 align="center">Robodimm</h1>
 
-It provides:
-- a frontend-only `DEMO` mode for rapid testing,
-- a backend-enabled `PRO` mode using FastAPI, Pinocchio, and Pink,
-- support for `CR4` palletizer and `CR6` 6-DOF robot models.
+<p align="center">
+  <strong>A Physics-Grounded Framework for Automated Actuator Sizing in Scalable Modular Robots</strong>
+</p>
+
+<p align="center">
+  <!-- Tests -->
+  <img alt="Tests" src="https://img.shields.io/badge/tests-214%20passed-brightgreen?logo=pytest&logoColor=white"/>
+  <!-- License -->
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"/>
+  <!-- Python -->
+  <img alt="Python 3.10" src="https://img.shields.io/badge/python-3.10-blue?logo=python&logoColor=white"/>
+  <!-- Docker -->
+  <img alt="Docker" src="https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white"/>
+  <!-- arXiv -->
+  <a href="https://arxiv.org/abs/2603.06864">
+    <img alt="arXiv" src="https://img.shields.io/badge/arXiv-2603.06864-b31b1b?logo=arxiv&logoColor=white"/>
+  </a>
+</p>
+
+<p align="center">
+  <!-- Pinocchio -->
+  <img alt="Pinocchio" src="https://img.shields.io/badge/Pinocchio-3.x-orange?logo=python&logoColor=white"/>
+  <!-- Pink -->
+  <img alt="Pink" src="https://img.shields.io/badge/Pink-4.x-pink?logo=python&logoColor=white"/>
+  <!-- FastAPI -->
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white"/>
+  <!-- Three.js -->
+  <img alt="Three.js" src="https://img.shields.io/badge/Three.js-r150+-black?logo=threedotjs&logoColor=white"/>
+  <!-- NumPy -->
+  <img alt="NumPy" src="https://img.shields.io/badge/NumPy-1.24+-013243?logo=numpy&logoColor=white"/>
+</p>
+
+---
+
+Robodimm is a web application for robot motion programming, inverse dynamics, and automated actuator sizing for scalable industrial robots. It combines a physics-based backend with an interactive 3D frontend to provide an end-to-end toolchain: from trajectory specification to motor and gearbox selection.
+
+Key features:
+- **DEMO mode** — runs entirely in the browser, no server required.
+- **PRO mode** — full physics backend via FastAPI + Pinocchio + Pink.
+- **CR4** 4-DOF palletizer (parallelogram closed-loop) and **CR6** 6-DOF spherical-wrist robot models.
+- Constrained inverse dynamics (KKT), actuator requirement analysis, and motor/gearbox selection.
+- Geometric scaling laws for structural mass/inertia with configurable exponents.
 
 ## Interface
-
-The simulator combines robot visualization, target/program editing, dynamics analysis, and actuator sizing in a single workspace.
 
 ![Robodimm interface](docs/images/interfaz.png)
 
@@ -25,48 +63,91 @@ Open `http://localhost:8080/simulator.html?mode=demo`
 
 ### PRO mode
 
-Preferred setup:
+**Conda (recommended):**
 
 ```bash
 conda env create -f environment.yml
 conda activate robodimm_env
-```
-
-Minimal setup:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run:
-
-```bash
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open:
-- `http://localhost:8000/`
-- `http://localhost:8000/simulator?mode=pro`
+**pip:**
 
-Default development login:
-- user: `admin`
-- password: `robotics`
+```bash
+pip install -r requirements.txt
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:8000/` or `http://localhost:8000/simulator?mode=pro`
+
+Default login: `admin` / `robotics`
 
 ### Docker
 
 ```bash
 cp .env.local .env
-docker-compose up --build
+docker compose up --build
+```
+
+## Running the Tests
+
+The test suite requires Pinocchio and Pink (included in `environment.yml` and the Docker image).
+
+**Docker (recommended):**
+
+```bash
+docker compose build
+docker compose run --rm robodimm micromamba run -n base pytest tests/ -v
+```
+
+**Conda:**
+
+```bash
+conda activate robodimm_env
+pytest tests/ -v
+```
+
+The suite contains **214 unit tests** covering:
+
+| Module | Tests | Coverage |
+|---|---|---|
+| `robot_core.interpolation` | 22 | Trapezoidal/linear profiles, multi-DOF trajectories |
+| `robot_core.inertial_params` | 25 | Box/cylinder inertia, CR4 scaling laws |
+| `robot_core.actuators` | 23 | Trajectory requirements, motor/gearbox selection |
+| `robot_core.kinematics` | 22 | FK (forward kinematics), IK solver, `build_robot` |
+| `robot_core.dynamics` | 15 | KKT constrained ID, trajectory dynamics, method comparison |
+| `robot_core` conversions | 16 | Real ↔ Pink ↔ RobotStudio joint space round-trips |
+| `backend.models` | 43 | Pydantic schema validation for all API endpoints |
+| `backend.utils` | 22 | Coordinate conversions, demo targets, index mapping |
+
+All tests pass in < 1 second on the Docker image (`Python 3.10`, `Pinocchio 3.x`, `Pink 4.x`).
+
+## Project Layout
+
+```
+robodimm-main/
+├── backend/          # FastAPI app and API routers
+├── frontend/         # Web UI and DEMO-side logic (Three.js)
+├── robot_core/       # Robot builders, kinematics, dynamics, actuators
+│   ├── builders/     # CR4 and CR6 Pinocchio model builders
+│   └── dynamics/     # Constrained ID, trajectory dynamics
+├── tests/            # 214 unit tests (pytest)
+├── meshes/           # Robot mesh assets (GLTF/GLB)
+├── docs/             # Documentation and images
+├── environment.yml   # Conda environment (Python 3.10 + Pinocchio + Pink)
+├── Dockerfile        # Micromamba-based container
+└── actuators_library.json  # Shared actuator catalog
 ```
 
 ## Main Capabilities
 
-- joint and Cartesian jog
-- target and program editing
+- Joint and Cartesian jog with real-time IK
+- Target and program editing with MoveJ / MoveL / MoveC instructions
 - DEMO/PRO execution behind a common frontend workflow
-- trajectory dynamics analysis and CSV export
-- actuator library management and motor/gearbox selection
-- CR4 dynamic configuration inputs including payload, friction, reflected inertia, motor layout, and structural scaling overrides
+- Trajectory inverse dynamics (RNEA + KKT constraints) and CSV export
+- Actuator library management and motor/gearbox selection with safety factors
+- Geometric scaling of structural mass and inertia (configurable exponents)
+- Payload, friction, reflected inertia, and motor stator mass configuration
 
 ## Notes
 
@@ -75,25 +156,19 @@ docker-compose up --build
 - The shared actuator library uses anonymized generic labels such as `AC_*` and `HD*`.
 - Structural scaling parameters are configurable in the app; the paper case-study values are not hardcoded defaults.
 
-## Project Layout
-
-- `backend/`: FastAPI app and API routers
-- `frontend/`: web UI and DEMO-side logic
-- `robot_core/`: robot builders, conversions, dynamics, actuator logic
-- `meshes/`: robot mesh assets
-- `actuators_library.json`: shared backend actuator catalog
-
 ## Additional Docs
 
-- `QUICK_START.md`
-- `DEPLOYMENT.md`
+- [QUICK_START.md](QUICK_START.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+
 ## Publication
 
 Robodimm is described in the following paper:
 
-- J. L. Torres, M. Munoz, J. D. Alvarez, J. L. Blanco, and A. Gimenez, "Robodimm: A Physics-Grounded Framework for Automated Actuator Sizing in Scalable Modular Robots," arXiv:2603.06864, 2026.
-- arXiv: `https://arxiv.org/abs/2603.06864`
-- DOI: `https://doi.org/10.48550/arXiv.2603.06864`
+> J. L. Torres, M. Munoz, J. D. Alvarez, J. L. Blanco, and A. Gimenez, "Robodimm: A Physics-Grounded Framework for Automated Actuator Sizing in Scalable Modular Robots," *arXiv:2603.06864*, 2026.
+
+- arXiv: https://arxiv.org/abs/2603.06864
+- DOI: https://doi.org/10.48550/arXiv.2603.06864
 
 ### How to Cite
 
@@ -107,3 +182,7 @@ Robodimm is described in the following paper:
   url     = {https://arxiv.org/abs/2603.06864}
 }
 ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
