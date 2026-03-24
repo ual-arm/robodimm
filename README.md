@@ -53,7 +53,19 @@ Key features:
 
 ## Quick Start
 
-### DEMO mode
+Robodimm has two operating modes with different requirements:
+
+| | DEMO mode | PRO mode |
+|---|---|---|
+| Physics backend (Pinocchio, Pink) | ❌ browser only | ✅ required |
+| Inverse dynamics (KKT) | ❌ | ✅ |
+| IK solver (Pink QP) | ❌ | ✅ |
+| REST API (FastAPI) | ❌ | ✅ |
+| Installation required | none | Docker / Conda |
+
+### DEMO mode — no installation required
+
+All logic runs in the browser (JavaScript). No server or Python dependencies needed.
 
 ```bash
 python3 -m http.server 8080 --directory frontend
@@ -61,9 +73,18 @@ python3 -m http.server 8080 --directory frontend
 
 Open `http://localhost:8080/simulator.html?mode=demo`
 
-### PRO mode
+### PRO mode — full physics backend
 
-**Conda (recommended):**
+**Docker (recommended)** — single command, no dependency management:
+
+```bash
+cp .env.local .env
+docker compose up --build
+```
+
+Open `http://localhost:8000/` or `http://localhost:8000/simulator?mode=pro`
+
+**Conda** — for development:
 
 ```bash
 conda env create -f environment.yml
@@ -71,23 +92,14 @@ conda activate robodimm_env
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**pip:**
+**pip** — minimal setup:
 
 ```bash
 pip install -r requirements.txt
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Open `http://localhost:8000/` or `http://localhost:8000/simulator?mode=pro`
-
 Default login: `admin` / `robotics`
-
-### Docker
-
-```bash
-cp .env.local .env
-docker compose up --build
-```
 
 ## Running the Tests
 
