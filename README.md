@@ -12,6 +12,12 @@
 </p>
 
 <p align="center">
+  <sub>Developed by</sub><br/>
+  <img src="docs/images/new_logo_solo.png" alt="Custum Robotics" width="80"/>
+  <br/><sub><b>Custum Robotics</b></sub>
+</p>
+
+<p align="center">
   <a href="https://commit-zeb.es/robot/" target="_blank">
     <img alt="Live Demo" src="https://img.shields.io/badge/🌐%20live%20demo-commit--zeb.es%2Frobot-22c55e?style=for-the-badge"/>
   </a>
