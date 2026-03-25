@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/Robodimm.png" alt="Robodimm logo" width="280"/>
+  <img src="docs/images/robodimm_logo_arm.svg" alt="Robodimm logo" width="280"/>
 </p>
 
 <h1 align="center">Robodimm</h1>
