@@ -14,7 +14,7 @@
 <p align="center">
   <sub>Developed by</sub><br/>
   <img src="docs/images/new_logo_solo.png" alt="Custom Robotics" width="80"/>
-  <br/><sub><b>Custum Robotics</b></sub>
+  <br/><sub><b>Custom Robotics</b></sub>
 </p>
 
 <p align="center">
