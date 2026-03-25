@@ -64,7 +64,9 @@ Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)**
 
 ## Interface
 
-![Robodimm interface](docs/images/interfaz.png)
+**DEMO mode** — browser-only simulation: joint jogging, target programming, and trapezoidal motion profiles:
+
+![Robodimm DEMO mode](docs/images/Demo.png)
 
 **PRO mode demo** — real-time inverse dynamics, IK solver, and actuator sizing (click to play):
 
