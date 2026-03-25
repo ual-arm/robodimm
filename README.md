@@ -18,8 +18,8 @@
 </p>
 
 <p align="center">
-  <a href="https://commit-zeb.es/robot/" target="_blank">
-    <img alt="Live Demo" src="https://img.shields.io/badge/🌐%20live%20demo-commit--zeb.es%2Frobot-22c55e?style=for-the-badge"/>
+  <a href="https://customrobotics.es/" target="_blank">
+    <img alt="Live Demo" src="https://img.shields.io/badge/🌐%20live%20demo-customrobotics.es-22c55e?style=for-the-badge"/>
   </a>
 </p>
 
@@ -64,9 +64,9 @@ Key features:
 
 ## Live deployment
 
-Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)**
+Try it now at **[https://customrobotics.es/](https://customrobotics.es/)**
 
-[![Robodimm landing](docs/images/Robobimm_pro_demo.png)](https://commit-zeb.es/robot/)
+[![Robodimm landing](docs/images/Robobimm_pro_demo.png)](https://customrobotics.es/)
 
 ## Interface
 
