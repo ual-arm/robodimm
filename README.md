@@ -68,8 +68,6 @@ Try it now at **[https://commit-zeb.es/robot/](https://commit-zeb.es/robot/)**
 
 **PRO mode demo** — real-time inverse dynamics, IK solver, and actuator sizing (click to play):
 
-[![PRO mode demo video](docs/images/interfaz.png)](docs/videos/demo_robodimm.mp4)
-
 https://github.com/user-attachments/assets/f64398df-2905-4825-8aa7-872f37545386
 
 ## Quick Start
