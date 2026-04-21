@@ -13,6 +13,7 @@ import numpy as np
 # SOLVER DE RESTRICCIONES
 # =============================================================================
 
+
 def solve_constraints(model, data, constraint_model, q0, max_iter=100, eps=1e-10):
     """
     Resuelve la geometría inversa para satisfacer las restricciones de cierre.
@@ -26,8 +27,13 @@ def solve_constraints(model, data, constraint_model, q0, max_iter=100, eps=1e-10
     rho = 1e-10
     mu = 1e-4
     data.M = np.eye(model.nv) * rho
-    kkt = pin.ContactCholeskyDecomposition(model, [constraint_model])
-    
+    try:
+        kkt = pin.ContactCholeskyDecomposition(
+            model, data, [constraint_model], [constraint_data]
+        )
+    except Exception:
+        kkt = pin.ContactCholeskyDecomposition(model, [constraint_model])
+
     for k in range(max_iter):
         pin.computeJointJacobians(model, data, q)
         kkt.compute(model, data, [constraint_model], [constraint_data], mu)
@@ -41,18 +47,19 @@ def solve_constraints(model, data, constraint_model, q0, max_iter=100, eps=1e-10
         y -= -dz[:3] + y
     return q, False
 
+
 # =============================================================================
 # MAPPING FROM INTERNAL MODEL VELOCITY INDICES TO USER-FACING JOINT NAMES
 # =============================================================================
 
 # For 6-DOF CR6: internal model has 9 DOF (J1, J2, J3real, J1p, J3, J2p, J4, J5, J6)
 ACTIVE_JOINTS_CR6 = {
-    0: 'J1',      
-    1: 'J2',      
-    2: 'J3',      # J3 motor drives J3real + J3 constraint
-    6: 'J4',      
-    7: 'J5',      
-    8: 'J6',      
+    0: "J1",
+    1: "J2",
+    2: "J3",  # J3 motor drives J3real + J3 constraint
+    6: "J4",
+    7: "J5",
+    8: "J6",
 }
 
 PARALLELOGRAM_TORQUE_COMBINATION_CR6 = {
@@ -61,12 +68,12 @@ PARALLELOGRAM_TORQUE_COMBINATION_CR6 = {
 
 # For 4-DOF CR4: internal model has 8 DOF
 ACTIVE_JOINTS_CR4 = {
-    0: 'J1',      
-    1: 'J2',      
-    2: 'J3',      
-    7: 'J4',      
+    0: "J1",
+    1: "J2",
+    2: "J3",
+    7: "J4",
 }
 
 PARALLELOGRAM_TORQUE_COMBINATION_CR4 = {
-    2: 4,  
+    2: 4,
 }

@@ -272,8 +272,17 @@ def create_parallelogram_constraint(model, j1p_id, j2p_id, L_ROD):
         pin.ReferenceFrame.LOCAL,
     )
     constraint_model.name = "parallelogram_closure"
-    constraint_model.corrector.Kp[:] = 10.0
-    constraint_model.corrector.Kd[:] = 2.0 * np.sqrt(10.0)
+    kp = 10.0
+    kd = 2.0 * np.sqrt(kp)
+
+    # Pinocchio exposes Baumgarte gains through different APIs across versions.
+    if hasattr(constraint_model, "corrector"):
+        constraint_model.corrector.Kp[:] = kp
+        constraint_model.corrector.Kd[:] = kd
+    elif hasattr(constraint_model, "m_baumgarte_parameters"):
+        constraint_model.m_baumgarte_parameters.Kp = kp
+        constraint_model.m_baumgarte_parameters.Kd = kd
+
     return constraint_model
 
 

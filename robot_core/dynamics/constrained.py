@@ -68,6 +68,17 @@ from typing import Tuple, Optional, List, Dict
 CR4_J4_ACT_SIGN = -1.0
 
 
+def _get_constraint_baumgarte_gains(constraint_model):
+    if hasattr(constraint_model, "corrector"):
+        return constraint_model.corrector.Kp, constraint_model.corrector.Kd
+
+    if hasattr(constraint_model, "m_baumgarte_parameters"):
+        params = constraint_model.m_baumgarte_parameters
+        return params.Kp, params.Kd
+
+    return 0.0, 0.0
+
+
 def _get_cr4_idx_map(model):
     names = set(model.names)
     required = {"J1", "J2", "J3real", "J3", "J_aux", "J1p", "J4"}
@@ -194,7 +205,12 @@ def compute_constrained_inverse_dynamics(
     # and handles singular/ill-conditioned mass matrices properly.
 
     # Create KKT decomposition object
-    kkt = pin.ContactCholeskyDecomposition(model, constraint_models)
+    try:
+        kkt = pin.ContactCholeskyDecomposition(
+            model, data, constraint_models, constraint_datas
+        )
+    except Exception:
+        kkt = pin.ContactCholeskyDecomposition(model, constraint_models)
 
     # Compute decomposition with regularization
     kkt.compute(model, data, constraint_models, constraint_datas, mu)
@@ -232,8 +248,7 @@ def compute_constrained_inverse_dynamics(
         vel_error = Jc_cm @ v
 
         # Baumgarte stabilization: γ = Kd·v_err + Kp·p_err
-        Kp = cm.corrector.Kp
-        Kd = cm.corrector.Kd
+        Kp, Kd = _get_constraint_baumgarte_gains(cm)
         gamma = Kd * vel_error + Kp * pos_error
         gamma_list.append(gamma)
 
