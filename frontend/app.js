@@ -63,8 +63,10 @@ const FEATURES = {
 console.log('[APP] Mode:', APP_MODE);
 console.log('[APP] Features:', FEATURES);
 
-// API base URL - auto-detect environment
-const apiBase = window.location.origin;
+// API base URL - use server subpath when deployed behind a prefix.
+const apiBase = window.location.pathname.includes('/robot')
+  ? `${window.location.origin}/robot`
+  : window.location.origin;
 console.log('[APP] apiBase:', apiBase);
 console.log('[APP] Running in', window.location.pathname.includes('/robot') ? 'server mode' : 'local mode');
 
@@ -1320,7 +1322,8 @@ if (!container) {
     if (ws) ws.close();
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}/ws/state?session_id=${sessionId}`);
+    const wsBasePath = new URL(apiBase).pathname.replace(/\/$/, '');
+    ws = new WebSocket(`${protocol}//${window.location.host}${wsBasePath}/ws/state?session_id=${sessionId}`);
 
     ws.onopen = () => {
       console.log('[APP] ws open');
