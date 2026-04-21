@@ -63,12 +63,16 @@ const FEATURES = {
 console.log('[APP] Mode:', APP_MODE);
 console.log('[APP] Features:', FEATURES);
 
-// API base URL - use server subpath when deployed behind a prefix.
-const apiBase = window.location.pathname.includes('/robot')
-  ? `${window.location.origin}/robot`
+// API base URL - prefer explicit HTML config, fallback to local root.
+const configuredApiBase = document
+  .querySelector('meta[name="robodimm-api-base"]')
+  ?.getAttribute('content')
+  ?.trim();
+const apiBase = configuredApiBase
+  ? new URL(configuredApiBase, window.location.origin).toString().replace(/\/$/, '')
   : window.location.origin;
 console.log('[APP] apiBase:', apiBase);
-console.log('[APP] Running in', window.location.pathname.includes('/robot') ? 'server mode' : 'local mode');
+console.log('[APP] Running in', configuredApiBase ? 'configured server mode' : 'local mode');
 
 // Global robot data (used by DEMO mode)
 let robotData = null;
