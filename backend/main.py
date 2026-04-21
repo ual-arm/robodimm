@@ -25,23 +25,28 @@ app = FastAPI(
     version="1.0.0",
 )
 
+api_app = FastAPI()
+
 # Serve static meshes for Three.js visualization
 _meshes_dir = Path(__file__).resolve().parent.parent / "meshes"
 app.mount("/meshes", StaticFiles(directory=str(_meshes_dir)), name="meshes")
+api_app.mount("/meshes", StaticFiles(directory=str(_meshes_dir)), name="meshes")
 
 # Create station directory for imported geometries
 _station_dir = Path(__file__).resolve().parent.parent / "station"
 _station_dir.mkdir(exist_ok=True)
 app.mount("/station", StaticFiles(directory=str(_station_dir)), name="station")
+api_app.mount("/station", StaticFiles(directory=str(_station_dir)), name="station")
 
 # CORS middleware - use origins from config
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=Config.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+for fastapi_app in (app, api_app):
+    fastapi_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=Config.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Import and mount routers
 from .auth import login
@@ -51,18 +56,28 @@ from . import routers
 
 # Authentication endpoint
 @app.post("/login")
+@api_app.post("/login")
 def login_endpoint(creds: LoginRequest):
     return login(creds)
 
 
 # Register routers
-app.include_router(routers.robot_info.router, prefix="", tags=["Robot Info"])
-app.include_router(routers.jog.router, prefix="", tags=["Jog Control"])
-app.include_router(routers.programming.router, prefix="", tags=["Programming"])
-app.include_router(routers.execution.router, prefix="", tags=["Execution"])
-app.include_router(routers.config.router, prefix="", tags=["Configuration"])
-app.include_router(routers.station.router, prefix="", tags=["Station Geometry"])
-app.include_router(routers.actuators.router, prefix="", tags=["Actuators"])
+for fastapi_app in (app, api_app):
+    fastapi_app.include_router(
+        routers.robot_info.router, prefix="", tags=["Robot Info"]
+    )
+    fastapi_app.include_router(routers.jog.router, prefix="", tags=["Jog Control"])
+    fastapi_app.include_router(
+        routers.programming.router, prefix="", tags=["Programming"]
+    )
+    fastapi_app.include_router(routers.execution.router, prefix="", tags=["Execution"])
+    fastapi_app.include_router(routers.config.router, prefix="", tags=["Configuration"])
+    fastapi_app.include_router(
+        routers.station.router, prefix="", tags=["Station Geometry"]
+    )
+    fastapi_app.include_router(routers.actuators.router, prefix="", tags=["Actuators"])
+
+app.mount("/robot", api_app)
 
 # Mount frontend at the end
 # Note: Don't use StaticFiles at "/" as it intercepts WebSocket requests
