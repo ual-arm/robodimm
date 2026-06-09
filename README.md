@@ -24,9 +24,10 @@ The environment supports two robot families only:
 A short walkthrough of the full workflow — parametric editor, jog,
 program, signal recording, and deterministic actuator sizing.
 
-https://github.com/ual-arm/robodimm/blob/main/docs/video_robodimm.mp4?raw=true
+![Robodimm workflow demo](docs/preview.gif)
 
-<video src="docs/video_robodimm.mp4" controls width="100%"></video>
+The full-length MP4 is available for download at
+[`docs/video_robodimm.mp4`](docs/video_robodimm.mp4).
 
 ---
 
