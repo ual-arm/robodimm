@@ -25,10 +25,19 @@ A short walkthrough of the full workflow — parametric editor, jog,
 program, signal recording, and deterministic actuator sizing — is
 available below.
 
-<video src="docs/video_robodimm.mp4" controls width="100%"></video>
+https://github.com/ual-arm/robodimm/raw/main/docs/video_robodimm.mp4
+
+<video
+  src="https://github.com/ual-arm/robodimm/raw/main/docs/video_robodimm.mp4"
+  controls
+  width="100%">
+</video>
 
 *If the player above does not render in your Markdown viewer, the
-file is also available at [`docs/video_robodimm.mp4`](./docs/video_robodimm.mp4).*
+file is also available at
+[`docs/video_robodimm.mp4`](https://github.com/ual-arm/robodimm/blob/main/docs/video_robodimm.mp4)
+or as a direct download from the
+[`docs/` directory](https://github.com/ual-arm/robodimm/tree/main/docs).*
 
 ---
 
