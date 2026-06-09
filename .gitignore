@@ -40,3 +40,9 @@ __pycache__/
 
 # Robodimm output data
 robodimm_output/
+
+# Internal / private — not for public visibility
+AGENTS.md
+KINEFORGE_MIGRATION_REFERENCE.md
+PLAN_ROBODIMM_FRONTEND_KINEFORGE.md
+packages/robotagricola_package/
