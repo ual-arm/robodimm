@@ -1,0 +1,26 @@
+# Robodimm PRO Backend Dockerfile
+# Build from project root:
+#   docker build -f Dockerfile.backend -t robodimm/backend-pro .
+# Run container:
+#   docker run -p 127.0.0.1:8001:8001 robodimm/backend-pro
+
+FROM mambaorg/micromamba:1.5
+
+COPY --chown=$MAMBA_USER:$MAMBA_USER environment.yml /tmp/environment.yml
+
+RUN micromamba install -y -n base -f /tmp/environment.yml && \
+    micromamba clean --all --yes
+
+WORKDIR /app
+
+# Copy backend code
+COPY --chown=$MAMBA_USER:$MAMBA_USER backend /app/backend
+
+# Expose port 8001
+EXPOSE 8001
+
+# Set host override for Docker networking
+ENV ROBODIMM_HOST=0.0.0.0
+
+# Run the FastAPI server
+CMD ["micromamba", "run", "-n", "base", "python", "backend/main.py"]

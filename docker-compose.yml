@@ -1,0 +1,7 @@
+services:
+  robodimm-web:
+    build: .
+    container_name: robodimm-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
