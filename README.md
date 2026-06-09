@@ -1,174 +1,283 @@
-# Robodimm: Interactive Robot Sizing & Motion Programming Environment
+# Robodimm
 
-Robodimm is an interactive environment for robot trajectory programming, kinematic/dynamic analysis, and deterministic actuator sizing (motors and gearboxes). Evolved from the `kineforge` rigid body dynamics libraries, Robodimm features a real-time 3D visualizer (Three.js), client-side kinematics, and server-side dynamics solvers (FastAPI + Pinocchio) wrapped in an industrial-grade simulation interface.
+> **Interactive Robot Trajectory Programming, Rigid-Body Dynamics, and
+> Deterministic Actuator Sizing — in your browser.**
 
-The environment supports two main robot families:
-1. **CR6 (Articulated Serial 6-DoF)**: Articulated serial arm with a decoupling spherical wrist (similar to ABB IRB 4600).
-2. **CR4 (Parallel Palletizer 4-DoF)**: Parallel parallelogram linkage structure with 4 degrees of freedom (similar to ABB IRB 460).
+Robodimm is a web-based environment for designing and validating the
+mechanical sizing of industrial robots. It provides a real-time 3D
+visualiser (Three.js), a client-side kinematic and approximate-dynamic
+solver, and an optional Python backend that runs **Pinocchio 4** for
+high-fidelity inverse dynamics. The actuator-sizer is passive,
+deterministic, and reproducible — given a `TorqueLog` and a catalog, it
+returns the same `best` candidate every time.
 
----
+The environment supports two robot families only:
 
-## Overview
+1. **CR6** — 6-DoF serial articulated arm, IRB 4600-class, with
+   decoupling spherical wrist. **Standard DH + RNEA** solver.
+2. **CR4** — 4-DoF parallel palletizer, IRB 460-class, with a
+   parallelogram linkage. **Closed-chain KKT** solver on a Pinocchio
+   cut tree.
 
-Robodimm can be deployed in two modes:
-- **DEMO Mode**: A fully client-side standalone web application. Runs approximate dynamics in the browser and sizing based on those torques.
-- **PRO Mode**: Integrates with a local Python backend running **Pinocchio** via loopback `127.0.0.1:8001`, enabling high-fidelity inverse dynamics computations (closed-chain KKT for CR4 and full RNEA for CR6).
-
----
-
-## Features
-
-* **3D Visualizer**: Interactive robot viewer built on Three.js featuring CAD axes, center of mass (COM) indicators, trajectory path visualizer, and natural Y-Up camera controls.
-* **Jogging Panel**: Support for joint-space sliders and Cartesian coordinates (TCP) jogging relative to either the **World** or tool (**TCP**) frames. Continuous mouse-hold jogging is fully supported.
-* **Duty Cycle Sequencer**:
-  * Sequence commands including joint motions (`MoveJ`), linear tool motions (`MoveL`), and waits (`Pause`).
-  * Pre-configured presets matching real industrial cycles.
-  * Load programs directly using a robust JSON/YAML importer.
-* **Deterministic Actuator Sizing**:
-  * Passive candidate selection based on trajectory `TorqueLog` demands (does not modify robot spec or run iterative loops).
-  * Evaluates candidates against 6 criteria (continuous output torque, peak output torque using a 5x rated motor limit policy, maximum speed, gearbox continuous torque, gearbox intermittent torque, and gearbox input speed limit).
-  * Rated power check generates warnings instead of hard filtering by default.
-  * User-friendly reducer type filtering (Strain wave / Harmonic and Cycloidal).
-* **Auditing & Manifests**: Expose dynamic logs to CSV and complete reproducibility manifests to JSON matching schema `robodimm.actuator_sizing_report.v1`.
+![Robodimm screenshot placeholder — Three.js viewer, dark slate
+background, CAD axes, COM markers, and right-hand tab panel]
 
 ---
 
-## Running Locally
+## Key Features
 
-To run the frontend development server:
+### Frontend (browser, React 18 + Three.js + Zustand)
 
-1. Install Node.js dependencies:
-   ```bash
-   npm install
-   ```
-2. Start the development server:
-   ```bash
-   npm run dev
-   ```
-3. Open your browser at `http://localhost:5173/`.
+- **Real-time 3D viewer.** Z-up world frame, slate-dark background,
+  CAD-aligned axes, COM markers, trajectory path, optional world grid.
+  CAD-authored GLB/GLTF and STL meshes are loaded on demand; primitive
+  geometry is the safe fallback.
+- **Two robot families.** Switch between CR6 and CR4 with full
+  geometry, inertia, and limit editors. The CR4 editor enforces the
+  parallelogram closure $P = B + C - O$ and $E = D + C - O$ in real
+  time.
+- **Jogging panel.** Joint-space sliders and Cartesian XYZ+yaw jog
+  relative to either the **World** or **TCP** frame. Continuous
+  mouse-hold jogging.
+- **Duty-cycle sequencer.** `MoveJ`, `MoveL`, and `Pause` instructions
+  with named targets. JSON / YAML program import-export.
+- **Deterministic actuator sizing.** Six hard pass/fail constraints
+  (continuous output torque, 5× peak, max speed, gearbox continuous,
+  gearbox intermittent, gearbox input speed) and four ranking
+  objectives (`min_mass`, `min_power`, `min_gearbox`, `max_margin`).
+  Full audit manifest: `robodimm.actuator_sizing_report.v1`.
+- **Station objects.** Drop GLB environment meshes (tables, fences,
+  fixtures) into the world frame without affecting the kinematic
+  tree; the loader is a cancellable reconciler that prevents WebGL
+  leaks.
 
----
+### Backend (Python, FastAPI + Pinocchio 4)
 
-## Building Production Assets
-
-To package and minify the static web assets for production deployment:
-
-```bash
-npm run build
-```
-
-The generated `dist/` directory is fully static and can be deployed with any static hosting provider, reverse proxy, or inside a generic web container.
-
----
-
-## Optional PRO Backend
-
-To enable high-fidelity Pinocchio calculations, you can run the PRO backend locally on your machine:
-
-### Linux/macOS
-```bash
-./releases/setup_backend.sh
-```
-
-### Windows
-```bash
-./releases/setup_backend.bat
-```
-
-The script automatically checks for a Conda/Mamba installation, creates the required environment from `environment.yml`, and boots the server bound strictly to loopback `127.0.0.1:8001`.
-
----
-
-## Environment Variables
-
-Robodimm uses Vite-style environment variables to configure backend connectivity. You can copy the provided templates to configure your environment:
-
-```bash
-cp .env.example .env
-```
-
-Available variables:
-- `VITE_APP_MODE`: Set to `production` or `development`.
-- `VITE_ENABLE_PRO_BACKEND`: Set to `false` to disable loopback health polling entirely (ideal for pure offline demo deployments).
-- `VITE_PRO_BACKEND_URL_PRIMARY`: The primary URL of the local PRO backend (default: `http://127.0.0.1:8001`).
-- `VITE_PRO_BACKEND_URL_FALLBACK`: The fallback URL (default: `http://localhost:8001`).
+- **CR4 closed-chain KKT.** A cut tree is built with
+  `pin.JointModelRY`/`RZ` bodies for all ten links and three
+  `pin.RigidConstraintModel` 3D contact constraints close the loops.
+  Lagrange multipliers are recovered by `lstsq` of the passive-joint
+  columns of $J_c^\top$.
+- **CR6 Newton–Euler.** A direct call to `pin.rnea` on the six-DoF
+  serial chain, with CAD-frame → link-frame inertial conversion when
+  the user spec is provided in CAD coordinates.
+- **Pinocchio model cache.** SHA-256 keyed on the canonical
+  `json.dumps(robot, sort_keys=True)`. Cold start ~30 s; subsequent
+  calls are sub-millisecond on cached models.
+- **Viscous friction model.** A scalar $b_i\,\dot q_i$ term per joint,
+  configured by `frictionCoeffNmSPerRad` on the joint limit. Default
+  $b_i = 0$ to match the Simscape reference.
+- **Validation against Simscape.** CR4 KKT reaches a total RMSE of
+  **0.245 Nm** on a representative palletizing trajectory; CR6 RNEA
+  matches to **9.2 × 10⁻¹³ Nm** (floating-point precision).
 
 ---
 
-## Actuator Sizing
+## Technology Stack
 
-The sizing panel evaluates catalog parameters from `public/actuators_library.json`. Selections are deterministic:
-- Integrates joint demands using sample-specific $dt$ time intervals.
-- Matches pairs strictly according to the compatibility matrix.
-- Evaluates six constraints per candidate: continuous output torque, peak output torque (5× rated motor factor), maximum joint speed, gearbox continuous torque, gearbox intermittent torque, and gearbox input speed limit.
-
-### Sizing Objective
-
-The **Sizing Objective** dropdown (Actuators tab) controls how passing candidates are ranked:
-
-| Objective | Ranking priority |
+| Layer | Technologies |
 |---|---|
-| `min_mass` *(default)* | Lightest motor+gearbox assembly first |
-| `min_power` | Smallest motor rated power first |
-| `min_gearbox` | Smallest gearbox (by assembly mass) first |
-| `max_margin` | Widest safety margin first |
-
-All objectives still apply the same six hard pass/fail constraints — only the ranking among passing candidates changes.
+| Frontend | React 18, TypeScript ~5.6, Vite 5.4, Three.js 0.184, Zustand 5, Tailwind CSS 3 (via PostCSS), Lucide-React, Recharts |
+| Frontend tests | Vitest 1.6 |
+| Backend | Python 3.9–3.10, FastAPI ≥ 0.100, Uvicorn, Pydantic ≥ 2.0 |
+| Dynamics | Pinocchio ≥ 3.0 (Conda), NumPy ≥ 1.22, SciPy ≥ 1.8 |
+| Packaging | Docker / Docker Compose, nginx 1.27 |
+| Validation ground truth | MATLAB R2026a, Simulink, Simscape Multibody™ |
 
 ---
 
-## Validation
+## Quick Links
 
-To run kinematics, dynamics, and sizing integration tests:
+| Document | What it covers |
+|---|---|
+| 🏁 [`docs/getting_started.md`](./docs/getting_started.md) | Prerequisites, install, DEMO and PRO modes, Docker, env vars, five-minute walkthrough, how to run the test suite |
+| 📐 [`docs/math_foundations.md`](./docs/math_foundations.md) | DH convention, CR4 hardpoint invariants, the cut-tree mapping, the KKT matrix system, the closed-loop J4 sign convention, viscous friction model, trajectory blending |
+| 🔌 [`docs/api_reference.md`](./docs/api_reference.md) | Every FastAPI endpoint, full JSON request/response payloads, the SHA-256 model cache, the trajectory hash, the CORS allowlist |
+| 🎨 [`docs/frontend_guide.md`](./docs/frontend_guide.md) | Zustand store slices, Three.js scene factory, the CAD-aligned frame helper, the GLB station-object reconciler, the cancellable loader |
+| ⚙️ [`docs/sizing_methodology.md`](./docs/sizing_methodology.md) | The six pass/fail constraints (with formulas), per-candidate margin metrics, the four ranking objectives, a worked example |
+| 🧪 [`docs/validation_benchmarks.md`](./docs/validation_benchmarks.md) | Simscape comparison methodology, per-joint RMSE tables, the 0.245 Nm CR4 / 9.2e-13 Nm CR6 results, how to reproduce |
+
+---
+
+## Quick Start (60 seconds)
+
+### DEMO mode (browser only, no Python)
 
 ```bash
+npm install
+npm run dev          # → http://localhost:5173
+```
+
+The full feature set works in DEMO mode: parametric editor, jog,
+program editor, signal recording, and actuator sizing. The
+approximate CR4 dynamics in the browser are not as accurate as the PRO
+backend's KKT solver, but they are sufficient for design exploration.
+
+### PRO mode (with Pinocchio)
+
+```bash
+# Backend (one-time setup + launch)
+./releases/setup_backend.sh
+
+# Frontend (in another terminal)
+npm run dev
+```
+
+The header engine switcher lights the **PRO (Python API)** pill in
+green when the backend advertises both `CR4.closed_chain_kkt = true`
+and `CR6.serial_rnea = true`. The first PRO batch is slow (~30 s cold
+start); subsequent calls are sub-millisecond thanks to the
+SHA-256-keyed Pinocchio model cache.
+
+### Docker
+
+```bash
+docker compose up --build                  # frontend on :8080
+docker build -f Dockerfile.backend -t robodimm/backend-pro .
+docker run -p 127.0.0.1:8001:8001 robodimm/backend-pro
+```
+
+---
+
+## Running Tests
+
+```bash
+# Frontend (Vitest)
 npx vitest run
+npx vitest run -t "CR4"                    # name filter
+npx vitest run src/math/actuators.test.ts  # single file
+
+# Backend (regression vs Simscape)
+mamba run -n robodimm-pro-backend python backend/test_regression.py
 ```
 
-To run TypeScript compiler verification:
+The Python regression script is **not** collected by `pytest` — it is
+invoked directly because it loads the Simscape CSVs and reproducibility
+manifests from the sibling `../ensayos/robodimm_cr{4,6}/` directory in
+the workspace.
 
-```bash
-npx tsc -p tsconfig.app.json --noEmit
-```
+---
 
 ## Inertial Parameters
 
-The inertial parameters editor (Editor tab) lets users inspect and override the mass, centre of mass (COM), and inertia tensor for every robot body. Default values for each robot preset follow a **moving-body-only** model:
+The inertial editor (Editor tab) lets you inspect and override mass,
+COM, and inertia tensor for every robot body. The default values for
+each robot preset follow a **moving-body-only** model:
 
-> **Important:** The datasheet total weight of a robot includes the fixed base casting, J1 motor and reducer housing, covers, cabling, and ballast — none of which load J2/J3 gravitationally. Only the moving mass **downstream** of each joint should be included in the link inertials. Do **not** scale link masses to match the datasheet total weight without a proper fixed-vs-moving breakdown.
+> The datasheet total weight of a robot includes the fixed base
+> casting, J1 motor and reducer housing, covers, cabling, and ballast
+> — none of which load J2/J3 gravitationally. Only the moving mass
+> *downstream* of each joint should be included in the link inertias.
+> Do not rescale link masses to match the datasheet total weight
+> without a proper fixed-vs-moving breakdown.
 
 ### CR6 defaults (IRB 4600-45/2.05, 425 kg shipping weight)
 
-| Link | Mass | Notes |
-|---|---|---|
-| LINK1 | 45 kg | Column structure rotating on J1 (J1 motor housing stays fixed) |
-| LINK2 | 65 kg | Upper arm — main contributor to J2 gravity torque |
-| LINK3 | 40 kg | Forearm with J4 motor housing |
-| LINK4 | 28 kg | Wrist roll body |
-| LINK5 | 17 kg | Wrist pitch body |
-| LINK6 |  5 kg | Wrist output flange |
-| **Total moving** | **200 kg** | Fixed base accounts for remaining ~225 kg of shipping weight |
-| Payload *(default)* | 15 kg | Representative application load — override as needed |
+| Link | Mass (kg) | Notes |
+|---|---:|---|
+| LINK1 | 45 | Column structure rotating on J1 (J1 motor housing stays fixed) |
+| LINK2 | 65 | Upper arm — main contributor to J2 gravity torque |
+| LINK3 | 40 | Forearm with J4 motor housing |
+| LINK4 | 28 | Wrist roll body |
+| LINK5 | 17 | Wrist pitch body |
+| LINK6 |  5 | Wrist output flange |
+| **Σ moving** | **200** | Fixed base accounts for remaining ~225 kg |
+| Payload *(default)* | 15 | Representative application load |
 
 ### CR4 defaults (IRB 460, ~925 kg shipping weight)
 
-| Link | Mass | Notes |
-|---|---|---|
-| SWING | 90 kg | Rotating column, loads J1 only |
-| P\_ARM | 35 kg | Proximal arm link |
-| LOWER\_ARM | 75 kg | Main lower arm beam — main contributor to J2 gravity torque |
-| P\_LINK | 25 kg | Proximal parallel link |
-| UPPER\_ARM | 40 kg | Upper arm / forearm |
-| LOWER\_LINK | 20 kg | Lower parallel link |
-| LINK\_PLATE | 15 kg | Link plate / coupler |
-| UPPER\_LINK | 15 kg | Upper parallel link |
-| TILT | 15 kg | Tilt / wrist body |
-| DISK | 10 kg | J4 output disk / flange |
-| **Total moving** | **340 kg** | Fixed base accounts for remaining ~585 kg of shipping weight |
-| Payload *(default)* | 50 kg | Override as needed |
+| Link | Mass (kg) | Notes |
+|---|---:|---|
+| SWING      |  90 | Rotating column, loads J1 only |
+| P_ARM      |  35 | Proximal arm link |
+| LOWER_ARM  |  75 | Main lower arm beam |
+| P_LINK     |  25 | Proximal parallel link |
+| UPPER_ARM  |  40 | Upper arm / forearm |
+| LOWER_LINK |  20 | Lower parallel link |
+| LINK_PLATE |  15 | Link plate / coupler |
+| UPPER_LINK |  15 | Upper parallel link |
+| TILT       |  15 | Tilt / wrist body |
+| DISK       |  10 | J4 output disk / flange |
+| **Σ moving** | **340** | Fixed base accounts for remaining ~585 kg |
+| Payload *(default)* | 50 | Override as needed |
+
+---
+
+## Repository Layout
+
+```
+robodimm/
+├── README.md                    ← this file (the portal)
+├── AGENTS.md                    ← agent quick-start (commands, gotchas)
+├── docs/                        ← SoftwareX-grade technical documentation
+│   ├── getting_started.md
+│   ├── math_foundations.md
+│   ├── api_reference.md
+│   ├── frontend_guide.md
+│   ├── sizing_methodology.md
+│   └── validation_benchmarks.md
+├── src/                         ← React + Three.js frontend
+│   ├── main.tsx, App.tsx
+│   ├── api/backend.ts           ← PRO fetch wrappers (800 ms / 120 s timeouts)
+│   ├── math/                    ← pure-TS FK/IK/dynamics/sizing
+│   ├── model/                   ← Zustand store + schemas
+│   ├── ui/                      ← Editor, Jog, Program, Sizing tabs
+│   └── viewer/                  ← Three.js scene, meshLoaders, reconciler
+├── backend/                     ← FastAPI + Pinocchio PRO backend
+│   ├── main.py                  ← CORS, PNA preflight, /api/packages/static
+│   ├── api/                     ← health, dynamics, packages routers
+│   ├── dynamics/                ← cr4_kkt, cr6_serial, schemas, validation
+│   └── test_regression.py       ← stand-alone Simscape regression
+├── public/
+│   └── actuators_library.json   ← static catalog served by nginx
+├── packages/                    ← local robot packages (robot.json + meshes)
+├── releases/                    ← setup_backend.sh / .bat
+├── Dockerfile, Dockerfile.backend, docker-compose.yml
+├── environment.yml              ← conda env 'robodimm-pro-backend'
+├── nginx.conf                   ← 1 h cache for /actuators_library.json
+├── package.json, vite.config.ts, tsconfig*.json, eslint.config.js
+└── tailwind.config.js, postcss.config.js
+```
 
 ---
 
 ## License
 
-This software is released under the MIT License.
+Robodimm is released under the **MIT License**.
+
+```
+MIT License
+
+Copyright (c) 2024–2026 Custom Robotics
+```
+
+See [`LICENSE`](./LICENSE) for the full text.
+
+---
+
+## Citation
+
+If you use Robodimm in academic work, please cite the SoftwareX paper:
+
+```bibtex
+@article{robodimm2026softwarex,
+  author    = {{Custom Robotics}},
+  title     = {{Robodimm}: Interactive Robot Trajectory Programming and
+               Deterministic Actuator Sizing in the Browser with
+               {Pinocchio}-backed Inverse Dynamics},
+  journal   = {SoftwareX},
+  volume    = {XX},
+  pages     = {XXXXXX},
+  year      = {2026},
+  publisher = {Elsevier},
+  doi       = {10.1016/j.softx.2026.XXXXXX},
+  url       = {https://github.com/customrobotics/robodimm}
+}
+```
+
+Software and accompanying Simscape reference data are versioned
+together; please pin a specific release tag (e.g. `v1.0.0`) when
+citing, and include the `dynamics_source` field from the
+`actuator_sizing_report.v1` envelope to identify which engine
+(`demo_frontend`, `pro_cr4_kkt`, or `pro_cr6_serial`) produced the
+results.
