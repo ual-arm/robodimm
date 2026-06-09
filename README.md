@@ -19,8 +19,16 @@ The environment supports two robot families only:
    parallelogram linkage. **Closed-chain KKT** solver on a Pinocchio
    cut tree.
 
-![Robodimm screenshot placeholder — Three.js viewer, dark slate
-background, CAD axes, COM markers, and right-hand tab panel]
+## Presentation Video
+
+A short walkthrough of the full workflow — parametric editor, jog,
+program, signal recording, and deterministic actuator sizing — is
+available below.
+
+<video src="docs/video_robodimm.mp4" controls width="100%"></video>
+
+*If the player above does not render in your Markdown viewer, the
+file is also available at [`docs/video_robodimm.mp4`](./docs/video_robodimm.mp4).*
 
 ---
 
