@@ -158,51 +158,6 @@ the workspace.
 
 ---
 
-## Inertial Parameters
-
-The inertial editor (Editor tab) lets you inspect and override mass,
-COM, and inertia tensor for every robot body. The default values for
-each robot preset follow a **moving-body-only** model:
-
-> The datasheet total weight of a robot includes the fixed base
-> casting, J1 motor and reducer housing, covers, cabling, and ballast
-> — none of which load J2/J3 gravitationally. Only the moving mass
-> *downstream* of each joint should be included in the link inertias.
-> Do not rescale link masses to match the datasheet total weight
-> without a proper fixed-vs-moving breakdown.
-
-### CR6 defaults (IRB 4600-45/2.05, 425 kg shipping weight)
-
-| Link | Mass (kg) | Notes |
-|---|---:|---|
-| LINK1 | 45 | Column structure rotating on J1 (J1 motor housing stays fixed) |
-| LINK2 | 65 | Upper arm — main contributor to J2 gravity torque |
-| LINK3 | 40 | Forearm with J4 motor housing |
-| LINK4 | 28 | Wrist roll body |
-| LINK5 | 17 | Wrist pitch body |
-| LINK6 |  5 | Wrist output flange |
-| **Σ moving** | **200** | Fixed base accounts for remaining ~225 kg |
-| Payload *(default)* | 15 | Representative application load |
-
-### CR4 defaults (IRB 460, ~925 kg shipping weight)
-
-| Link | Mass (kg) | Notes |
-|---|---:|---|
-| SWING      |  90 | Rotating column, loads J1 only |
-| P_ARM      |  35 | Proximal arm link |
-| LOWER_ARM  |  75 | Main lower arm beam |
-| P_LINK     |  25 | Proximal parallel link |
-| UPPER_ARM  |  40 | Upper arm / forearm |
-| LOWER_LINK |  20 | Lower parallel link |
-| LINK_PLATE |  15 | Link plate / coupler |
-| UPPER_LINK |  15 | Upper parallel link |
-| TILT       |  15 | Tilt / wrist body |
-| DISK       |  10 | J4 output disk / flange |
-| **Σ moving** | **340** | Fixed base accounts for remaining ~585 kg |
-| Payload *(default)* | 50 | Override as needed |
-
----
-
 ## Repository Layout
 
 ```
