@@ -96,7 +96,58 @@ The provided `docker-compose.yml` orchestrates the frontend on port 8080. The
 backend container expects `ROBODIMM_HOST=0.0.0.0` (already set in
 `Dockerfile.backend`) so it can be reached by the host browser.
 
-### 3c. Verify the backend
+### 3c. Production deployment behind Apache reverse proxy
+
+This is the recommended setup for serving Robodimm over HTTPS on a public
+domain (e.g. `https://customrobotics.es`).
+
+**1. Create `.env` before building** (Vite bakes variables at compile time):
+
+```bash
+cp .env.production.example .env
+# Edit .env — set VITE_PRO_BACKEND_URL_PRIMARY to your public domain:
+# VITE_PRO_BACKEND_URL_PRIMARY=https://your-domain.com
+# VITE_PRO_BACKEND_URL_FALLBACK=https://your-domain.com
+```
+
+**2. Build and start the frontend container:**
+
+```bash
+docker compose up --build -d   # nginx on :8080
+```
+
+**3. (Optional) Start the PRO backend container:**
+
+```bash
+docker build -f Dockerfile.backend -t robodimm/backend-pro .
+docker run -d --name robodimm-backend -p 127.0.0.1:8001:8001 robodimm/backend-pro
+```
+
+**4. Apache VirtualHost** (`/etc/apache2/sites-enabled/your-site.conf`):
+
+```apache
+<VirtualHost *:443>
+    ServerName your-domain.com
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/your-domain.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/your-domain.com/privkey.pem
+    ProxyPreserveHost On
+
+    # PRO backend (optional — omit if not running the backend container)
+    ProxyPass /api http://127.0.0.1:8001/api
+    ProxyPassReverse /api http://127.0.0.1:8001/api
+
+    # Frontend (nginx)
+    ProxyPass / http://127.0.0.1:8080/
+    ProxyPassReverse / http://127.0.0.1:8080/
+</VirtualHost>
+```
+
+```bash
+sudo apache2ctl configtest && sudo systemctl reload apache2
+```
+
+### 3d. Verify the backend
 
 ```bash
 curl http://127.0.0.1:8001/api/health
