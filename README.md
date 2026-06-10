@@ -3,6 +3,11 @@
 > **Interactive Robot Trajectory Programming, Rigid-Body Dynamics, and
 > Deterministic Actuator Sizing — in your browser.**
 
+**🚀 Live demo: [https://customrobotics.es](https://customrobotics.es)**
+No installation required — runs entirely in the browser.
+
+---
+
 Robodimm is a web-based environment for designing and validating the
 mechanical sizing of industrial robots. It provides a real-time 3D
 visualiser (Three.js), a client-side kinematic and approximate-dynamic
