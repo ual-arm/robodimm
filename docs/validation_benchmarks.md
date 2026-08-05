@@ -35,7 +35,8 @@ Multibody™ pipeline. For each robot family:
    fixed-step solver at the same `dt_s` as the frontend trajectory
    builder. The recorded `tau_*` columns are the reference torques.
 4. **Manifest.** The exact `RobotSpec` used by Simscape is stored under
-   `robodimm_paper/experiments/robodimm_cr{4,6}/robodimm_output/{demo,pro}/`.
+   `robodimm_paper/experiments/archive/submitted-validation-f33a676/`
+   `E2E-VM05-v1/robodimm_cr{4,6}/robodimm_output/{demo,pro}/`.
    The loader prefers `demo/` then falls back to `pro/`.
 5. **Damping protocol.** The default `E2E-VM05-v1` verification requires and
    preserves `0.5 N m/(rad/s)` on every joint. `REG-ZD-v1` explicitly zeros
@@ -82,7 +83,7 @@ Sample output (numbers reproduced from `test_regression.py:140-153`):
 
 ```
 --- Running CR4 KKT regression vs Simscape (E2E-VM05-v1) ---
-  Using manifest: ../robodimm_paper/experiments/robodimm_cr4/robodimm_output/demo/..._manifest.json
+  Using manifest: ../robodimm_paper/experiments/archive/submitted-validation-f33a676/E2E-VM05-v1/robodimm_cr4/robodimm_output/demo/..._manifest.json
   Comparing N samples...
   CR4 Joint-level RMSE (Nm):
     J1: 0.000912 Nm  (max abs: 0.004201 Nm)

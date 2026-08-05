@@ -25,7 +25,12 @@ DAMPING_PROTOCOL = "E2E-VM05-v1"
 
 def _experiment_directories(protocol: str) -> Tuple[Path, Path]:
     if protocol == "E2E-VM05-v1":
-        root = EXPERIMENTS_ROOT
+        root = (
+            EXPERIMENTS_ROOT
+            / "archive"
+            / "submitted-validation-f33a676"
+            / "E2E-VM05-v1"
+        )
     elif protocol == "REG-ZD-v1":
         # Phase 3 will expose the archived zero-damping fixtures under this
         # unambiguous location. Never reinterpret E2E-VM05 files as REG-ZD.

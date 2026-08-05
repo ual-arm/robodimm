@@ -254,9 +254,10 @@ mamba run -n robodimm-pro-backend python backend/test_regression.py \
 
 It loads Simscape-generated reference CSVs and the corresponding
 reproducibility manifests from the sibling
-`../robodimm_paper/experiments/robodimm_cr{4,6}/`
-directories in the workspace. See `docs/validation_benchmarks.md` for the
-expected RMSE thresholds and the methodology.
+`../robodimm_paper/experiments/archive/submitted-validation-f33a676/`
+`E2E-VM05-v1/robodimm_cr{4,6}/` directories in the workspace. See
+`docs/validation_benchmarks.md` for the expected RMSE thresholds and the
+methodology.
 
 ---
 
