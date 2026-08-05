@@ -4,7 +4,7 @@
 # Run container:
 #   docker run -p 8080:80 robodimm/frontend
 
-FROM node:20-alpine AS build
+FROM node:24.19.0-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 # Uses npm ci for reproducible builds (requires package-lock.json in repo), or change to "npm install" if not tracking the lockfile

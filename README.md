@@ -92,7 +92,7 @@ The full-length MP4 is available for download at
 | Frontend | React 18, TypeScript ~5.6, Vite 5.4, Three.js 0.184, Zustand 5, Tailwind CSS 3 (via PostCSS), Lucide-React, Recharts |
 | Frontend tests | Vitest 1.6 |
 | Backend | Python 3.9–3.10, FastAPI ≥ 0.100, Uvicorn, Pydantic ≥ 2.0 |
-| Dynamics | Pinocchio ≥ 3.0 (Conda), NumPy ≥ 1.22, SciPy ≥ 1.8 |
+| Dynamics | Pinocchio 4.0.0 (Conda), NumPy ≥ 1.22, SciPy ≥ 1.8 |
 | Packaging | Docker / Docker Compose, nginx 1.27 |
 | Validation ground truth | MATLAB R2026a, Simulink, Simscape Multibody™ |
 

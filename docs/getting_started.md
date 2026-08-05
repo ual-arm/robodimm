@@ -11,10 +11,11 @@ serial articulated arm.
 
 | Component | Required version | Notes |
 |---|---|---|
-| **Node.js** | ≥ 18 (tested with 20) | `node -v` |
-| **npm** | ≥ 9 (bundled with Node 20) | `npm -v` |
+| **Node.js** | 24.19.0 LTS | Exact revision and container build version; `node -v`. |
+| **npm** | 11.17.0 | Frozen by `packageManager`; `npm -v`. |
 | **Python** | 3.9 or 3.10 | Only needed for **PRO mode** (Pinocchio). |
-| **conda / mamba** | mamba ≥ 1.5 recommended | Pinocchio is **not** pip-installable. |
+| **conda** | libmamba solver recommended | Pinocchio is **not** pip-installable. |
+| **Pinocchio** | 4.0.0 | Installed from `environment.yml` for **PRO mode**. |
 | **Docker / Docker Compose** *(optional)* | ≥ 24 | Single-command full stack. |
 | **WebGL-capable browser** | Chrome 120+, Firefox 120+, Safari 17+ | Three.js renderer. |
 

@@ -49,7 +49,7 @@ Liveness probe. No body. Returns Pinocchio version and the CORS allowlist.
 {
   "status": "ok",
   "version": "1.0.0",
-  "pinocchio_version": "3.6.0",
+  "pinocchio_version": "4.0.0",
   "allowed_origins": [
     "https://customrobotics.es",
     "https://www.customrobotics.es",
@@ -119,7 +119,7 @@ single `q, qd, qdd` triple.
   "manifest": {
     "model_id": "cr4_pinocchio_kkt.v1",
     "backend_version": "1.0.0",
-    "pinocchio_version": "3.6.0",
+    "pinocchio_version": "4.0.0",
     "robot_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
     "trajectory_hash": null,
     "q_space_convention": "standard_dh_with_offsets",
@@ -175,7 +175,7 @@ The samples list is bounded to 1..10 000 by a Pydantic field validator
   "manifest": {
     "model_id": "cr4_pinocchio_kkt.v1",
     "backend_version": "1.0.0",
-    "pinocchio_version": "3.6.0",
+    "pinocchio_version": "4.0.0",
     "robot_hash": "9f86d0...0a08",
     "trajectory_hash": "3b4c5d...ee01",
     "q_space_convention": "standard_dh_with_offsets",
