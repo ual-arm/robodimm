@@ -82,7 +82,9 @@ The strict TypeScript types mirroring the backend Pydantic models:
 - `ProgramTarget` / `ProgramInstruction` (`MoveJ | MoveL | Pause`).
 - `SizingMargins` — `continuous`, `peak`, `speed`, `power`,
   `motorPeakFactor`, `enforcePowerLimit?`, `sizingObjective?`.
-- `ActuatorSizingReport` — `schema: "robodimm.actuator_sizing_report.v1"`.
+- `ActuatorSizingReport` — `schema: "robodimm.actuator_sizing_report.v2"`;
+  v2 adds validated demand status, six safety-adjusted margins, limiting
+  constraint, SHA-256 input/catalog provenance, and explicit screening scope.
 
 `cloneRobotSpec` (schemas.ts:268) is the canonical deep-clone helper used
 by every action that mutates the spec.
@@ -229,8 +231,11 @@ components in `src/ui/`. The tab order is:
 2. **Jog Panel** (`JogTab.tsx`) — joint sliders and Cartesian XYZ+yaw
    jog in either World or TCP frame. Disabled until `isSet`.
 3. **Program** (`ProgramTab.tsx`) — targets and instructions
-   (`MoveJ`, `MoveL`, `Pause`). The **Program** button calls
-   `runSignalRecording()` to populate the torque log and playback buffer.
+    (`MoveJ`, `MoveL`, `Pause`). The **Program** button calls
+    `runSignalRecording()` to populate the torque log and playback buffer.
+    `MoveL` is a legacy label for quintic joint interpolation whose duration
+    includes a TCP endpoint-distance floor; it does not enforce a Cartesian
+    straight line.
 4. **Sizing** (`ActuatorsTab.tsx`) — picks the sizing objective, runs the
    passive deterministic selection, displays the report, and exposes
    JSON / CSV export.

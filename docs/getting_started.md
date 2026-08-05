@@ -182,6 +182,9 @@ cp .env.production.example .env  # production-style
 | `VITE_ENABLE_PRO_BACKEND` | `true` | Set to `false` to disable health polling (pure offline demo). |
 | `VITE_PRO_BACKEND_URL_PRIMARY` | `http://127.0.0.1:8001` | Primary PRO backend URL. |
 | `VITE_PRO_BACKEND_URL_FALLBACK` | `http://localhost:8001` | Fallback URL used after consecutive failures. |
+| `VITE_ROBODIMM_SOURCE_COMMIT` | empty | Exact frontend Git commit embedded in v2 sizing reports; required for release evidence. |
+| `VITE_ACTUATOR_CATALOG_SHA256` | empty | Raw catalog-file SHA-256; distinct from the report's canonical parsed-JSON hash. |
+| `ROBODIMM_SOURCE_COMMIT` | empty | Exact backend Git commit included in dynamics manifests. |
 
 `.env` is git-ignored.
 
@@ -205,8 +208,10 @@ Once the frontend is open at `http://localhost:5173`:
 4. **Jog the robot.** Switch to *Jog Panel*. Use the joint sliders or
    Cartesian XYZ + yaw jog. Hold a slider for continuous motion.
 5. **Build a small program.** Switch to *Program*. Add a `MoveJ` target and
-   instruction, optionally a `MoveL`, and a `Pause`. The frontend builds a
-   smooth quintic-blend trajectory internally (see
+    instruction, optionally a `MoveL`, and a `Pause`. The frontend builds a
+    smooth quintic joint-space blend internally. The legacy `MoveL` label adds
+    a TCP endpoint-distance duration floor; it is not a Cartesian straight-line
+    primitive (see
    `docs/math_foundations.md` § *Trajectory generation*).
 6. **Record dynamics.** Click **Signal Recording** in the *Sizing* tab. The
    frontend solves the trajectory in DEMO mode (browser) and POSTs the same
@@ -240,11 +245,16 @@ The Python regression script is **not** collected by `pytest`; it must be
 invoked directly with the `robodimm-pro-backend` env active:
 
 ```bash
-mamba run -n robodimm-pro-backend python backend/test_regression.py
+mamba run -n robodimm-pro-backend python -m unittest \
+  backend.test_cr4_kkt_diagnostics -v
+mamba run -n robodimm-pro-backend python backend/test_cr4_fd_sensitivity.py
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol E2E-VM05-v1
 ```
 
 It loads Simscape-generated reference CSVs and the corresponding
-reproducibility manifests from the sibling `../ensayos/robodimm_cr{4,6}/`
+reproducibility manifests from the sibling
+`../robodimm_paper/experiments/robodimm_cr{4,6}/`
 directories in the workspace. See `docs/validation_benchmarks.md` for the
 expected RMSE thresholds and the methodology.
 

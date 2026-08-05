@@ -1,4 +1,4 @@
-import { RobotSpec, ProgramSpec, TorqueSample, TorqueLog } from '../model/schemas';
+import { RobotSpec, ProgramSpec } from '../model/schemas';
 import { Serial6Engine } from './serial6';
 import { PalletizerEngine } from './palletizer';
 import { getTranslation } from './matrix';
@@ -88,6 +88,9 @@ export function buildProgramDynamicsTrajectory(
       current_q = [...target_q];
 
     } else if (instruction.type === 'MoveL') {
+      // Legacy name: this is a quintic joint-space interpolation to target_q.
+      // TCP endpoint distance contributes a duration floor, but intermediate
+      // TCP positions are not constrained to a Cartesian straight line.
       const target = program.targets.find(t => t.name === instruction.target_name);
       if (!target) continue;
       const target_q = target.q;
@@ -149,7 +152,6 @@ function appendQuinticSegment(
   instruction_index: number
 ): void {
   const steps = Math.max(Math.ceil(duration_s / dt_s), 1);
-  const n = q0.length;
   const delta = q1.map((val, i) => val - q0[i]);
 
   const lastTime = points[points.length - 1].time_s;

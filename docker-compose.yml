@@ -1,6 +1,10 @@
 services:
   robodimm-web:
-    build: .
+    build:
+      context: .
+      args:
+        ROBODIMM_SOURCE_COMMIT: ${ROBODIMM_SOURCE_COMMIT:-}
+        ACTUATOR_CATALOG_SHA256: ${ACTUATOR_CATALOG_SHA256:-}
     container_name: robodimm-web
     restart: unless-stopped
     ports:

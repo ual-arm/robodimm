@@ -3,22 +3,20 @@ import { useRobodimmStore } from '../model/state';
 import {
   Zap,
   Sliders,
-  Shield,
-  Layers,
   Database,
-  ArrowRight,
   CheckCircle,
   AlertTriangle,
   Info,
   ChevronDown,
   ChevronUp,
   Download,
-  Check,
   X
 } from 'lucide-react';
 import { TorqueLog, SizingObjective } from '../model/schemas';
+import { computeJointDemands } from '../math/actuators';
 
 interface CyclePowerDiagnostics {
+  complete: boolean;
   cycleTimeS: number;
   jointStats: {
     joint_name: string;
@@ -38,8 +36,11 @@ interface CyclePowerDiagnostics {
 function computeCyclePowerDiagnostics(torqueLog: TorqueLog): CyclePowerDiagnostics {
   const numSamples = torqueLog.samples.length;
   const numJoints = torqueLog.joint_names.length;
+  const demands = computeJointDemands(torqueLog);
+  const complete = demands.length > 0 && demands.every(demand => demand.complete);
   if (numSamples === 0) {
     return {
+      complete: false,
       cycleTimeS: 0,
       jointStats: [],
       positivePowerMeanTotal: 0,
@@ -49,49 +50,36 @@ function computeCyclePowerDiagnostics(torqueLog: TorqueLog): CyclePowerDiagnosti
     };
   }
 
-  const cycleTimeS = torqueLog.samples[numSamples - 1].time_s;
+  const cycleTimeS = complete ? demands[0].cycle_time_s : 0;
   const jointStats = torqueLog.joint_names.map((name, j) => {
-    let sumTauSq = 0;
     let sumPosPower = 0;
-    let peakTau = 0;
-    let peakSpeed = 0;
     let peakAccel = 0;
     let peakPosPower = 0;
-    let totalTime = 0;
-
-    for (let s = 0; s < numSamples; s++) {
-      const sample = torqueLog.samples[s];
-      const prevTime = s > 0 ? torqueLog.samples[s - 1].time_s : sample.time_s - torqueLog.dt_s;
-      const dt = sample.time_s - prevTime;
-      if (dt <= 0) continue;
-
+    const positivePower = torqueLog.samples.map(sample => {
       const tau = sample.tau[j];
-      const speed = sample.joint_velocity ? sample.joint_velocity[j] : (sample.velocity ? sample.velocity[j] : 0);
-      const accel = sample.joint_acceleration ? sample.joint_acceleration[j] : (sample.acceleration ? sample.acceleration[j] : 0);
-      const power = tau * speed;
-      const posPower = Math.max(power, 0);
-
-      sumTauSq += tau * tau * dt;
-      sumPosPower += posPower * dt;
-
-      peakTau = Math.max(peakTau, Math.abs(tau));
-      peakSpeed = Math.max(peakSpeed, Math.abs(speed));
-      peakAccel = Math.max(peakAccel, Math.abs(accel));
-      peakPosPower = Math.max(peakPosPower, posPower);
-
-      totalTime += dt;
+      const speed = (sample.joint_velocity ?? sample.velocity ?? [])[j];
+      const accel = (sample.joint_acceleration ?? sample.acceleration ?? [])[j];
+      if (Number.isFinite(accel)) peakAccel = Math.max(peakAccel, Math.abs(accel));
+      if (!Number.isFinite(tau) || !Number.isFinite(speed)) return 0;
+      const value = Math.max(tau * speed, 0);
+      peakPosPower = Math.max(peakPosPower, value);
+      return value;
+    });
+    if (complete) {
+      for (let sampleIndex = 1; sampleIndex < numSamples; sampleIndex++) {
+        const dt = torqueLog.samples[sampleIndex].time_s - torqueLog.samples[sampleIndex - 1].time_s;
+        sumPosPower += 0.5 * (positivePower[sampleIndex - 1] + positivePower[sampleIndex]) * dt;
+      }
     }
-
-    const tau_rms = totalTime > 0 ? Math.sqrt(sumTauSq / totalTime) : 0;
-    const positive_power_mean = totalTime > 0 ? sumPosPower / totalTime : 0;
+    const demand = demands[j];
 
     return {
       joint_name: name,
-      tau_rms,
-      tau_peak: peakTau,
-      speed_peak: peakSpeed,
+      tau_rms: demand?.tau_rms_Nm ?? 0,
+      tau_peak: demand?.tau_peak_Nm ?? 0,
+      speed_peak: demand?.speed_peak_rad_s ?? 0,
       accel_peak: peakAccel,
-      positive_power_mean,
+      positive_power_mean: cycleTimeS > 0 ? sumPosPower / cycleTimeS : 0,
       positive_power_peak: peakPosPower
     };
   });
@@ -101,33 +89,33 @@ function computeCyclePowerDiagnostics(torqueLog: TorqueLog): CyclePowerDiagnosti
     const sample = torqueLog.samples[s];
     for (let j = 0; j < numJoints; j++) {
       const tau = sample.tau[j];
-      const speed = sample.joint_velocity ? sample.joint_velocity[j] : (sample.velocity ? sample.velocity[j] : 0);
-      const power = tau * speed;
-      positivePowerTotalTime[s] += Math.max(power, 0);
+      const speed = (sample.joint_velocity ?? sample.velocity ?? [])[j];
+      if (Number.isFinite(tau) && Number.isFinite(speed)) {
+        positivePowerTotalTime[s] += Math.max(tau * speed, 0);
+      }
     }
   }
 
   let positivePowerPeakTotal = 0;
   let sumPositivePowerTotalTime = 0;
-  let totalTimeIntegral = 0;
-
-  for (let s = 0; s < numSamples; s++) {
-    const sample = torqueLog.samples[s];
-    const prevTime = s > 0 ? torqueLog.samples[s - 1].time_s : sample.time_s - torqueLog.dt_s;
-    const dt = sample.time_s - prevTime;
-    if (dt <= 0) continue;
-
-    const posPowerT = positivePowerTotalTime[s];
-    positivePowerPeakTotal = Math.max(positivePowerPeakTotal, posPowerT);
-    sumPositivePowerTotalTime += posPowerT * dt;
-    totalTimeIntegral += dt;
+  for (const positivePower of positivePowerTotalTime) {
+    positivePowerPeakTotal = Math.max(positivePowerPeakTotal, positivePower);
+  }
+  if (complete) {
+    for (let sampleIndex = 1; sampleIndex < numSamples; sampleIndex++) {
+      const dt = torqueLog.samples[sampleIndex].time_s - torqueLog.samples[sampleIndex - 1].time_s;
+      sumPositivePowerTotalTime += 0.5 * (
+        positivePowerTotalTime[sampleIndex - 1] + positivePowerTotalTime[sampleIndex]
+      ) * dt;
+    }
   }
 
-  const positivePowerMeanTotal = totalTimeIntegral > 0 ? sumPositivePowerTotalTime / totalTimeIntegral : 0;
+  const positivePowerMeanTotal = cycleTimeS > 0 ? sumPositivePowerTotalTime / cycleTimeS : 0;
   const energyPerCycleJ = sumPositivePowerTotalTime;
   const energyPerCycleWh = energyPerCycleJ / 3600.0;
 
   return {
+    complete,
     cycleTimeS,
     jointStats,
     positivePowerMeanTotal,
@@ -152,9 +140,9 @@ export const ActuatorsTab: React.FC = () => {
 
 
   // Safety margins state (with default values matching spec)
-  const [marginCont, setMarginCont] = useState<number>(1.3);
-  const [marginPeak, setMarginPeak] = useState<number>(1.2);
-  const [marginSpeed, setMarginSpeed] = useState<number>(1.15);
+  const [marginCont, setMarginCont] = useState<number>(1.5);
+  const [marginPeak, setMarginPeak] = useState<number>(2.0);
+  const [marginSpeed, setMarginSpeed] = useState<number>(1.2);
   const [marginPower, setMarginPower] = useState<number>(1.1);
   const [sizingObjective, setSizingObjective] = useState<SizingObjective>('min_mass');
   
@@ -189,7 +177,7 @@ export const ActuatorsTab: React.FC = () => {
           motorPeakFactor,
           enforcePowerLimit,
           sizingObjective
-        } as any,
+        },
         gearboxType
       );
     }
@@ -230,7 +218,8 @@ export const ActuatorsTab: React.FC = () => {
     const reportWithNotes = {
       ...sizingResults,
       notes: [
-        `Motor peak torque is estimated as ${sizingResults.margins.motorPeakFactor.toFixed(1)} x rated torque for short robotic transients.`,
+        'This report is a preliminary actuator screening and design-support recommendation, not procurement validation.',
+        `Motor peak torque uses a generic ${sizingResults.margins.motorPeakFactor.toFixed(1)} x rated-torque benchmark assumption; it is not manufacturer-backed and allowable peak duration and thermal duty are unknown.`,
         "Gearbox peak is limited by max_intermittent_torque_Nm.",
         "Robot inertial parameters are not modified by selected actuators.",
         "Motor rated power is a sizing class, not expected average cycle consumption.",
@@ -477,9 +466,9 @@ export const ActuatorsTab: React.FC = () => {
               <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl flex flex-col gap-3">
                 <div className="flex justify-between items-center border-b border-slate-850 pb-2">
                   <div className="flex flex-col">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Optimal selections</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Preliminary actuator screening</h3>
                     <span className="text-[9px] text-slate-500">
-                      Based on {torqueLog.samples.length} trajectory samples ({sizingResults.dynamics_source})
+                      Candidate ranking from {torqueLog.samples.length} trajectory samples ({sizingResults.dynamics_source}); not procurement validation
                     </span>
                   </div>
                   <div className={`flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
@@ -490,7 +479,7 @@ export const ActuatorsTab: React.FC = () => {
                     {sizingResults.complete ? (
                       <>
                         <CheckCircle size={10} />
-                        <span>Sized successfully</span>
+                        <span>Screening complete</span>
                       </>
                     ) : (
                       <>
@@ -527,11 +516,11 @@ export const ActuatorsTab: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-3">
-                            {best ? (
-                              <div className="flex flex-col items-end text-right">
-                                <span className="text-[11px] font-semibold text-slate-250">
-                                  {best.motor.name}
-                                </span>
+                             {best ? (
+                               <div className="flex flex-col items-end text-right">
+                                 <span className="text-[11px] font-semibold text-slate-250">
+                                   {best.motor.name}
+                                 </span>
                                 <span className="text-[9px] text-slate-500 font-mono">
                                   {best.gearbox_type === 'harmonic' ? 'Strain wave' : 'Cycloidal'} ({best.ratio}:1) | {best.total_mass_kg.toFixed(2)} kg
                                 </span>
@@ -565,44 +554,49 @@ export const ActuatorsTab: React.FC = () => {
                             </div>
 
                             {/* Chosen Candidate Details */}
-                            {best ? (
-                              <div className="flex flex-col gap-3">
-                                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Optimal Selection Margins:</div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] text-slate-400">
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Continuous Output Torque:</span>
-                                    <span className="font-bold text-emerald-400">{(best.motor.rated_torque_Nm * best.gearbox.ratio * best.gearbox.efficiency).toFixed(1)} Nm ({best.continuous_margin.toFixed(2)}x)</span>
-                                  </div>
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Peak Output Torque (5x):</span>
-                                    <span className="font-bold text-emerald-400">{(best.motor.rated_torque_Nm * motorPeakFactor * best.gearbox.ratio * best.gearbox.efficiency).toFixed(1)} Nm ({best.peak_margin.toFixed(2)}x)</span>
-                                  </div>
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Output Speed limit:</span>
-                                    <span className="font-bold text-emerald-400">{((best.motor.no_load_speed_rpm / best.gearbox.ratio)).toFixed(0)} RPM ({best.speed_margin.toFixed(2)}x)</span>
-                                  </div>
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Gearbox Max Continuous:</span>
-                                    <span className="font-bold text-emerald-400">{best.gearbox.max_continuous_torque_Nm} Nm ({best.gearbox_continuous_margin.toFixed(2)}x)</span>
-                                  </div>
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Gearbox Max Intermittent:</span>
-                                    <span className="font-bold text-emerald-400">{best.gearbox.max_intermittent_torque_Nm} Nm ({best.gearbox_peak_margin.toFixed(2)}x)</span>
-                                  </div>
-                                  <div className="flex justify-between border-b border-slate-900 pb-0.5">
-                                    <span>Rated Motor Power:</span>
-                                    <span className={`font-bold ${best.motor.rated_power_W < (demand.power_rms_W / best.gearbox.efficiency) * marginPower ? 'text-amber-400' : 'text-slate-300'}`}>
-                                      {best.motor.rated_power_W} W ({best.power_margin === Infinity ? 'n/a' : `${best.power_margin.toFixed(2)}x`})
-                                    </span>
-                                  </div>
-                                </div>
+                             {best ? (
+                               <div className="flex flex-col gap-3">
+                                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Safety-adjusted mechanical margins (M1–M6):</div>
+                                 <div className="text-[9px] text-slate-500">Limiting constraint: <strong className="text-amber-400">{best.limiting_constraint}</strong> ({best.limiting_margin === Infinity ? '∞' : `${best.limiting_margin.toFixed(2)}x`}); power is reported separately.</div>
+                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] text-slate-400">
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Continuous Output Torque:</span>
+                                     <span className="font-bold text-emerald-400">{(best.motor.rated_torque_Nm * best.gearbox.ratio * best.gearbox.efficiency).toFixed(1)} Nm (M1 {best.mechanical_margins.M1.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Generic Peak Output ({motorPeakFactor.toFixed(1)}x):</span>
+                                     <span className="font-bold text-emerald-400">{(best.motor.rated_torque_Nm * motorPeakFactor * best.gearbox.ratio * best.gearbox.efficiency).toFixed(1)} Nm (M2 {best.mechanical_margins.M2.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Output Speed limit:</span>
+                                     <span className="font-bold text-emerald-400">{((best.motor.no_load_speed_rpm / best.gearbox.ratio)).toFixed(0)} RPM (M3 {best.mechanical_margins.M3.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Gearbox Max Continuous:</span>
+                                     <span className="font-bold text-emerald-400">{best.gearbox.max_continuous_torque_Nm} Nm (M4 {best.mechanical_margins.M4.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Gearbox Max Intermittent:</span>
+                                     <span className="font-bold text-emerald-400">{best.gearbox.max_intermittent_torque_Nm} Nm (M5 {best.mechanical_margins.M5.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Gearbox Input Speed:</span>
+                                     <span className="font-bold text-emerald-400">{best.gearbox.max_input_speed_rpm} RPM (M6 {best.mechanical_margins.M6.toFixed(2)}x)</span>
+                                   </div>
+                                   <div className="flex justify-between border-b border-slate-900 pb-0.5">
+                                     <span>Rated Motor Power:</span>
+                                     <span className={`font-bold ${best.motor.rated_power_W < (demand.power_rms_W / best.gearbox.efficiency) * marginPower ? 'text-amber-400' : 'text-slate-300'}`}>
+                                       {best.motor.rated_power_W} W ({best.power_margin === Infinity ? 'n/a' : `${best.power_margin.toFixed(2)}x`})
+                                     </span>
+                                   </div>
+                                 </div>
 
                                 {/* Power check warning */}
-                                {best.motor.rated_power_W < (demand.power_rms_W / best.gearbox.efficiency) * marginPower && (
+                                {best.power_warning && (
                                   <div className="flex items-start gap-1 text-[9px] text-amber-400 bg-amber-500/5 border border-amber-500/10 p-2 rounded">
                                     <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                                     <span>
-                                      Warning: Motor rated power ({best.motor.rated_power_W}W) is below the RMS demand limit ({(demand.power_rms_W / best.gearbox.efficiency).toFixed(0)}W including efficiency and margins). Candidate passed since power limit enforcement is disabled.
+                                      Warning: {best.power_warning} Candidate passed because power-limit enforcement is disabled.
                                     </span>
                                   </div>
                                 )}
@@ -698,7 +692,7 @@ export const ActuatorsTab: React.FC = () => {
                   </button>
 
                   <p className="text-[9px] text-slate-500 leading-normal mt-2">
-                    <strong>Sizing Policy:</strong> Motor peak torque is estimated as {motorPeakFactor.toFixed(1)}x rated torque for short robotic transients. Gearbox peak is limited by max_intermittent_torque_Nm. Robot inertial parameters are not modified by selected actuators.
+                    <strong>Screening Policy:</strong> This is a preliminary candidate ranking and design-support recommendation, not procurement validation. The generic {motorPeakFactor.toFixed(1)}x motor peak factor is not manufacturer-backed and has unknown allowable duration and thermal duty. Gearbox peak is limited by max_intermittent_torque_Nm; robot inertial parameters are not modified by selected actuators.
                   </p>
                 </div>
               </div>
@@ -714,6 +708,11 @@ export const ActuatorsTab: React.FC = () => {
                 <p className="text-[10px] text-slate-400 leading-relaxed">
                   Summary of positive mechanical power and cycle energy drawn by all joints combined:
                 </p>
+                {!diagnostics.complete && (
+                  <div className="text-[9px] text-red-400 bg-red-500/5 border border-red-500/10 p-2 rounded">
+                    Diagnostics are incomplete because finite torque/velocity values and at least two strictly increasing timestamps are required.
+                  </div>
+                )}
 
                 <div className="grid grid-cols-3 gap-2 mt-1">
                   <div className="bg-slate-900/50 border border-slate-850 p-2.5 rounded-lg flex flex-col justify-between">
@@ -735,7 +734,7 @@ export const ActuatorsTab: React.FC = () => {
                 </div>
 
                 <div className="bg-slate-900/30 border border-slate-850 p-3 rounded-lg flex justify-between items-center text-[10px]">
-                  <span className="font-bold text-slate-400 uppercase tracking-wide">Energy Consumed per Cycle:</span>
+                  <span className="font-bold text-slate-400 uppercase tracking-wide">Positive Mechanical Energy per Cycle:</span>
                   <span className="font-mono font-bold text-indigo-400 text-xs">
                     {diagnostics.energyPerCycleJ.toFixed(0)} J ({diagnostics.energyPerCycleWh.toFixed(4)} Wh)
                   </span>

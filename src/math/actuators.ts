@@ -1,4 +1,10 @@
 import { ActuatorLibrary, TorqueLog, SizingMargins, JointDemand, ActuatorCandidate, MotorSpec, GearboxSpec, ActuatorSizingReport, GearboxType, JointActuatorSelection, RobotActuatorSelection, SizingObjective } from '../model/schemas';
+import { canonicalSha256 } from './provenance';
+
+type MechanicalConstraint = 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6';
+
+const RAD_S_TO_RPM = 60.0 / (2.0 * Math.PI);
+const MECHANICAL_CONSTRAINTS: MechanicalConstraint[] = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'];
 
 /**
  * Computes time-weighted RMS and peak joint demands from the simulation TorqueLog.
@@ -11,6 +17,14 @@ export function computeJointDemands(torqueLog: TorqueLog): JointDemand[] {
   const numSamples = torqueLog.samples.length;
   if (numSamples === 0) return [];
 
+  // The first sample is an endpoint, not a synthetic interval.  Invalid time
+  // bases invalidate the complete demand rather than silently dropping an
+  // interval and producing a procurement-like result from partial data.
+  const timeValid = numSamples >= 2 && torqueLog.samples.every((sample, index) => {
+    if (!Number.isFinite(sample.time_s)) return false;
+    return index === 0 || sample.time_s > torqueLog.samples[index - 1].time_s;
+  });
+
   for (let j = 0; j < jointNames.length; j++) {
     let sumTauSq = 0;
     let sumSpeedSq = 0;
@@ -19,38 +33,49 @@ export function computeJointDemands(torqueLog: TorqueLog): JointDemand[] {
     let peakSpeed = 0;
     let peakPower = 0;
     let peakRegen = 0;
-    let totalTime = 0;
+    let valuesValid = true;
+    const valueAt = (sampleIndex: number) => {
+      const sample = torqueLog.samples[sampleIndex];
+      const tauValue = sample.tau[j];
+      const velocityValue = (sample.joint_velocity ?? sample.velocity ?? [])[j];
+      const valid = Number.isFinite(tauValue) && Number.isFinite(velocityValue);
+      valuesValid = valuesValid && valid;
+      const tau = valid ? tauValue : 0;
+      const velocity = valid ? velocityValue : 0;
+      return { tau, velocity, power: tau * velocity };
+    };
 
+    // Peaks are retained even when the time base is incomplete or invalid.
     for (let s = 0; s < numSamples; s++) {
-      const sample = torqueLog.samples[s];
-      const prevTime = s > 0 ? torqueLog.samples[s - 1].time_s : sample.time_s - torqueLog.dt_s;
-      const dt = sample.time_s - prevTime;
-      
-      // Prevent backward jumps or zero intervals
-      if (dt <= 0) continue;
-
-      const tau = sample.tau[j];
-      const velocity = sample.joint_velocity ? sample.joint_velocity[j] : (sample.velocity ? sample.velocity[j] : 0);
-      const p = tau * velocity;
-
-      sumTauSq += tau * tau * dt;
-      sumSpeedSq += velocity * velocity * dt;
-      sumPowerSq += p * p * dt;
-
+      const { tau, velocity, power } = valueAt(s);
       peakTau = Math.max(peakTau, Math.abs(tau));
       peakSpeed = Math.max(peakSpeed, Math.abs(velocity));
-      peakPower = Math.max(peakPower, Math.abs(p));
-
-      // Regenerative power check (negative power)
-      if (p < 0) {
-        peakRegen = Math.max(peakRegen, Math.abs(p));
-      }
-      totalTime += dt;
+      peakPower = Math.max(peakPower, Math.abs(power));
+      if (power < 0) peakRegen = Math.max(peakRegen, -power);
     }
 
-    const tau_rms_Nm = totalTime > 0 ? Math.sqrt(sumTauSq / totalTime) : 0;
-    const speed_rms_rad_s = totalTime > 0 ? Math.sqrt(sumSpeedSq / totalTime) : 0;
-    const power_rms_W = totalTime > 0 ? Math.sqrt(sumPowerSq / totalTime) : 0;
+    // Evaluate every sample before deciding whether RMS integration is valid.
+    const sampleValues = torqueLog.samples.map((_sample, index) => valueAt(index));
+
+    let cycleTime = 0;
+    if (timeValid && valuesValid) {
+      cycleTime = torqueLog.samples[numSamples - 1].time_s - torqueLog.samples[0].time_s;
+      for (let s = 1; s < numSamples; s++) {
+        const dt = torqueLog.samples[s].time_s - torqueLog.samples[s - 1].time_s;
+        const previous = sampleValues[s - 1];
+        const current = sampleValues[s];
+
+        // Time-weighted trapezoidal integration of x^2, including both
+        // endpoints of each interval.
+        sumTauSq += 0.5 * (previous.tau ** 2 + current.tau ** 2) * dt;
+        sumSpeedSq += 0.5 * (previous.velocity ** 2 + current.velocity ** 2) * dt;
+        sumPowerSq += 0.5 * (previous.power ** 2 + current.power ** 2) * dt;
+      }
+    }
+
+    const tau_rms_Nm = cycleTime > 0 ? Math.sqrt(sumTauSq / cycleTime) : 0;
+    const speed_rms_rad_s = cycleTime > 0 ? Math.sqrt(sumSpeedSq / cycleTime) : 0;
+    const power_rms_W = cycleTime > 0 ? Math.sqrt(sumPowerSq / cycleTime) : 0;
 
     demands.push({
       joint_name: jointNames[j],
@@ -61,7 +86,11 @@ export function computeJointDemands(torqueLog: TorqueLog): JointDemand[] {
       power_rms_W,
       power_peak_W: peakPower,
       regen_peak_W: peakRegen,
-      cycle_time_s: totalTime
+      cycle_time_s: cycleTime,
+      complete: timeValid && valuesValid,
+      time_valid: timeValid,
+      values_valid: valuesValid,
+      sample_count: numSamples
     });
   }
 
@@ -79,17 +108,56 @@ export function evaluateMotorGearboxCandidate(
   margins: SizingMargins
 ): ActuatorCandidate {
   const failure_reasons: string[] = [];
+  const warnings: string[] = [];
   const motorPeakFactor = margins.motorPeakFactor ?? 5.0;
+  const capacityValues = [
+    motor.rated_power_W,
+    motor.rated_torque_Nm,
+    motor.no_load_speed_rpm,
+    motor.mass_kg,
+    gearbox.ratio,
+    gearbox.efficiency,
+    gearbox.max_continuous_torque_Nm,
+    gearbox.max_intermittent_torque_Nm,
+    gearbox.max_input_speed_rpm,
+    gearbox.mass_kg,
+    margins.continuous,
+    margins.peak,
+    margins.speed,
+    margins.power,
+    motorPeakFactor
+  ];
+  if (!capacityValues.every(value => Number.isFinite(value) && value > 0)) {
+    failure_reasons.push('Candidate contains a non-finite or non-positive catalog capacity or sizing factor.');
+  }
+
+  if (demand.complete === false) {
+    failure_reasons.push('Torque demand is incomplete: finite torque/velocity values and at least two samples with strictly increasing times are required.');
+  }
+  const demandValues = [
+    demand.tau_rms_Nm,
+    demand.tau_peak_Nm,
+    demand.speed_rms_rad_s,
+    demand.speed_peak_rad_s,
+    demand.power_rms_W,
+    demand.power_peak_W,
+    demand.regen_peak_W,
+    demand.cycle_time_s
+  ];
+  if (!demandValues.every(value => Number.isFinite(value) && value >= 0)) {
+    failure_reasons.push('Torque demand contains a non-finite or negative derived value.');
+  }
 
   // 1. Output capacities
   const tau_out_cont = motor.rated_torque_Nm * gearbox.ratio * gearbox.efficiency;
-  
-  // Peak torque available based on 5x rated motor torque policy
+
+  // Peak torque is a configurable generic benchmark assumption, not a
+  // manufacturer-backed capability or a statement about allowable duration.
   const tau_out_peak = motor.rated_torque_Nm * motorPeakFactor * gearbox.ratio * gearbox.efficiency;
   const omega_out_max = (motor.no_load_speed_rpm / gearbox.ratio) * (2.0 * Math.PI / 60.0);
 
   // Demand speeds at the gearbox input shaft
-  const speed_peak_rpm = demand.speed_peak_rad_s * (60.0 / (2.0 * Math.PI));
+  const speed_peak_rpm = demand.speed_peak_rad_s * RAD_S_TO_RPM;
   const max_input_speed_demanded_rpm = speed_peak_rpm * gearbox.ratio;
 
   // 2. Verify all sizing criteria
@@ -114,7 +182,7 @@ export function evaluateMotorGearboxCandidate(
   const required_speed = demand.speed_peak_rad_s * margins.speed;
   if (omega_out_max < required_speed) {
     const omega_out_max_rpm = motor.no_load_speed_rpm / gearbox.ratio;
-    const required_speed_rpm = required_speed * (60.0 / (2.0 * Math.PI));
+    const required_speed_rpm = required_speed * RAD_S_TO_RPM;
     failure_reasons.push(
       `Maximum output speed (${omega_out_max_rpm.toFixed(0)} RPM) is below required speed limit (${required_speed_rpm.toFixed(0)} RPM).`
     );
@@ -146,37 +214,47 @@ export function evaluateMotorGearboxCandidate(
 
   // Rule 7: Power rating limit (warning by default, blocks only if enforcePowerLimit is checked)
   const required_power_rms = (demand.power_rms_W / gearbox.efficiency) * margins.power;
-  const power_margin = demand.power_rms_W > 1e-6 ? (motor.rated_power_W * gearbox.efficiency) / demand.power_rms_W : Infinity;
-  
-  if (motor.rated_power_W < required_power_rms) {
+  const power_margin = required_power_rms > 1e-6 ? motor.rated_power_W / required_power_rms : Infinity;
+  let power_warning: string | undefined;
+
+  if (power_margin < 1) {
+    power_warning = `Motor rated power (${motor.rated_power_W} W) is below required RMS power limit (${required_power_rms.toFixed(0)} W).`;
+    warnings.push(power_warning);
     if (margins.enforcePowerLimit) {
-      failure_reasons.push(
-        `Motor rated power (${motor.rated_power_W} W) is below required RMS power limit (${required_power_rms.toFixed(0)} W).`
-      );
+      failure_reasons.push(power_warning);
     }
   }
 
-  const passes = failure_reasons.length === 0;
-
   // Margin calculation helper with division-by-zero protection (caps at Infinity if demand is 0)
   const getMargin = (available: number, demanded: number) => {
-    return demanded < 1e-6 ? Infinity : available / demanded;
+    if (!Number.isFinite(available) || !Number.isFinite(demanded) || demanded < 0) return 0;
+    return demanded === 0 ? Infinity : available / demanded;
   };
 
-  const continuous_margin = getMargin(tau_out_cont, demand.tau_rms_Nm);
-  const peak_margin = getMargin(tau_out_peak, demand.tau_peak_Nm);
-  const speed_margin = getMargin(omega_out_max, demand.speed_peak_rad_s);
-  const gearbox_continuous_margin = getMargin(gearbox.max_continuous_torque_Nm, demand.tau_rms_Nm);
-  const gearbox_peak_margin = getMargin(gearbox.max_intermittent_torque_Nm, demand.tau_peak_Nm);
-
-  // Compute minimum safety margin among critical rules (excluding power warning)
-  const min_margin = Math.min(
-    continuous_margin,
-    peak_margin,
-    speed_margin,
-    gearbox_continuous_margin,
-    gearbox_peak_margin
-  );
+  // Six safety-adjusted mechanical margins.  The object insertion order is
+  // deliberate: it is also the fixed M1..M6 tie order for the limiter.
+  const mechanical_margins = {
+    M1: getMargin(tau_out_cont, demand.tau_rms_Nm * margins.continuous),
+    M2: getMargin(tau_out_peak, demand.tau_peak_Nm * margins.peak),
+    M3: getMargin(omega_out_max, demand.speed_peak_rad_s * margins.speed),
+    M4: getMargin(gearbox.max_continuous_torque_Nm, demand.tau_rms_Nm * margins.continuous),
+    M5: getMargin(gearbox.max_intermittent_torque_Nm, demand.tau_peak_Nm * margins.peak),
+    M6: getMargin(gearbox.max_input_speed_rpm, max_input_speed_demanded_rpm * margins.speed)
+  };
+  const min_margin = Math.min(...MECHANICAL_CONSTRAINTS.map(constraint => mechanical_margins[constraint]));
+  let limiting_constraint: MechanicalConstraint = 'M1';
+  for (const constraint of MECHANICAL_CONSTRAINTS.slice(1)) {
+    if (mechanical_margins[constraint] < mechanical_margins[limiting_constraint]) {
+      limiting_constraint = constraint;
+    }
+  }
+  if (!MECHANICAL_CONSTRAINTS.every(constraint => {
+    const margin = mechanical_margins[constraint];
+    return margin === Infinity || Number.isFinite(margin);
+  })) {
+    failure_reasons.push('Candidate contains a non-finite mechanical capacity or margin.');
+  }
+  const passes = failure_reasons.length === 0;
 
   return {
     motor_id: motor.id,
@@ -185,12 +263,19 @@ export function evaluateMotorGearboxCandidate(
     ratio: gearbox.ratio,
     passes,
     failure_reasons,
-    continuous_margin,
-    peak_margin,
-    speed_margin,
-    gearbox_continuous_margin,
-    gearbox_peak_margin,
+    // Legacy names are retained, now with the safety-adjusted definitions.
+    continuous_margin: mechanical_margins.M1,
+    peak_margin: mechanical_margins.M2,
+    speed_margin: mechanical_margins.M3,
+    gearbox_continuous_margin: mechanical_margins.M4,
+    gearbox_peak_margin: mechanical_margins.M5,
+    gearbox_input_speed_margin: mechanical_margins.M6,
     power_margin,
+    mechanical_margins,
+    limiting_constraint,
+    limiting_margin: min_margin,
+    warnings,
+    power_warning,
     min_margin,
     total_mass_kg: motor.mass_kg + gearbox.mass_kg,
     motor,
@@ -207,6 +292,23 @@ export function evaluateMotorGearboxCandidate(
  * 5. Lower ratio next.
  */
 export function rankCandidates(candidates: ActuatorCandidate[], objective: SizingObjective = 'min_mass'): ActuatorCandidate[] {
+  const candidateMinMargin = (candidate: ActuatorCandidate): number => {
+    // Recompute from the normalized six-margin set when available so a stale
+    // legacy min_margin cannot affect max_margin ranking.
+    if (candidate.mechanical_margins) {
+      return Math.min(...MECHANICAL_CONSTRAINTS.map(constraint => candidate.mechanical_margins[constraint]));
+    }
+    return candidate.min_margin;
+  };
+
+  const compareDescendingMargin = (a: number, b: number): number => {
+    if (a === b) return 0;
+    if (a === Infinity) return -1;
+    if (b === Infinity) return 1;
+    if (Math.abs(a - b) <= 1e-5) return 0;
+    return b - a;
+  };
+
   return [...candidates].sort((a, b) => {
     // 1. Passes first (true first)
     if (a.passes !== b.passes) {
@@ -237,11 +339,10 @@ export function rankCandidates(candidates: ActuatorCandidate[], objective: Sizin
       }
     } else if (objective === 'max_margin') {
       // 2. Higher min_margin first (Infinity placed first)
-      if (a.min_margin !== b.min_margin) {
-        if (a.min_margin === Infinity) return -1;
-        if (b.min_margin === Infinity) return 1;
-        return b.min_margin - a.min_margin;
-      }
+      const aMinMargin = candidateMinMargin(a);
+      const bMinMargin = candidateMinMargin(b);
+      const marginComparison = compareDescendingMargin(aMinMargin, bMinMargin);
+      if (marginComparison !== 0) return marginComparison;
       // 3. Lower total mass next
       if (Math.abs(a.total_mass_kg - b.total_mass_kg) > 1e-5) {
         return a.total_mass_kg - b.total_mass_kg;
@@ -269,13 +370,18 @@ export function rankCandidates(candidates: ActuatorCandidate[], objective: Sizin
     }
 
     // Safety margin next (if not already sorted by max_margin)
-    if (objective !== 'max_margin' && a.min_margin !== b.min_margin) {
-      if (a.min_margin === Infinity) return -1;
-      if (b.min_margin === Infinity) return 1;
-      return b.min_margin - a.min_margin;
+    if (objective !== 'max_margin') {
+      const aMinMargin = candidateMinMargin(a);
+      const bMinMargin = candidateMinMargin(b);
+      const marginComparison = compareDescendingMargin(aMinMargin, bMinMargin);
+      if (marginComparison !== 0) return marginComparison;
     }
 
-    return 0;
+    // Do not rely on engine sort stability for catalog ties.
+    const compareCodePoints = (first: string, second: string): number => first < second ? -1 : first > second ? 1 : 0;
+    const motorOrder = compareCodePoints(a.motor_id, b.motor_id);
+    if (motorOrder !== 0) return motorOrder;
+    return compareCodePoints(a.gearbox_id, b.gearbox_id);
   });
 }
 
@@ -332,35 +438,46 @@ export function selectActuatorsForLog(
     });
   }
 
-  const complete = joints.every(j => j.best !== undefined);
+  const complete = joints.length > 0 && joints.every(j => j.demand.complete && j.best !== undefined);
 
-  // Deterministic catalog/log hashes for manifest
-  const getSimpleHash = (str: string): string => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) - hash + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return Math.abs(hash).toString(16);
-  };
+  const provenance_hash_algorithm = 'sha256-canonical-json-v1' as const;
+  const torque_log_hash = canonicalSha256(torqueLog);
+  const catalog_hash = canonicalSha256(library);
 
-  const torque_log_hash = getSimpleHash(JSON.stringify(torqueLog.samples.map(s => s.tau)));
-  const library_hash = getSimpleHash(JSON.stringify({
-    motors: library.motors.map(m => m.id),
-    gearboxes: library.gearboxes.map(g => g.id)
-  }));
-
-  const dynamics_source = (torqueLog as any).engine_used || 'demo_frontend';
+  const dynamics_source = torqueLog.engine_used || 'demo_frontend';
+  const buildSourceCommit = import.meta.env.VITE_ROBODIMM_SOURCE_COMMIT || null;
+  const catalogFileSha256 = import.meta.env.VITE_ACTUATOR_CATALOG_SHA256 || null;
 
   return {
-    schema: "robodimm.actuator_sizing_report.v1",
+    schema: "robodimm.actuator_sizing_report.v2",
     robot_kind: robotKind,
     robot_name: robotName,
     dynamics_source,
     torque_log_hash,
+    catalog_hash,
+    provenance_hash_algorithm,
+    torque_log_hash_scope: 'parsed_canonical_json',
+    catalog_hash_scope: 'parsed_canonical_json',
+    catalog_file_sha256: catalogFileSha256,
+    dynamics_manifest: torqueLog.manifest ?? null,
+    source_commit: torqueLog.manifest?.source_commit ?? buildSourceCommit,
     catalog_version: library.metadata.version || "2.0",
     catalog_anonymized: true,
-    motor_peak_policy: "rated_torque_x_5_for_short_robotic_transients",
+    motor_peak_policy: "generic_rated_torque_factor_benchmark_assumption",
+    motor_peak_assumption: {
+      factor: margins.motorPeakFactor ?? 5.0,
+      basis: 'generic_benchmark_assumption',
+      manufacturer_backed: false,
+      peak_duration_s: null,
+      peak_duration_known: false
+    },
+    screening_scope: 'preliminary_actuator_screening',
+    recommendation_type: 'design_support_recommendation',
+    procurement_validated: false,
+    warnings: [
+      'Preliminary actuator screening and candidate ranking only; this is not procurement validation.',
+      'The generic motor peak factor is not manufacturer-backed and allowable peak duration and thermal duty are unknown.'
+    ],
     margins,
     joints,
     complete
@@ -378,16 +495,22 @@ export function getCr4LinkForJoint(jointIdx: number): string {
 export function selectActuators(
   library: ActuatorLibrary,
   torqueLog: TorqueLog,
-  margins: { continuous: number; peak: number; speed: number; power?: number }
+  margins: {
+    continuous: number;
+    peak: number;
+    speed: number;
+    power?: number;
+    motorPeakFactor?: number;
+    enforcePowerLimit?: boolean;
+  }
 ): RobotActuatorSelection {
   const fullMargins: SizingMargins = {
     continuous: margins.continuous,
     peak: margins.peak,
     speed: margins.speed,
     power: margins.power ?? 1.1,
-    motorPeakFactor: 5.0,
-    enforcePowerLimit: false
+    motorPeakFactor: margins.motorPeakFactor ?? 5.0,
+    enforcePowerLimit: margins.enforcePowerLimit ?? false
   };
   return selectActuatorsForLog(torqueLog, library, fullMargins, 'unknown', 'unknown');
 }
-

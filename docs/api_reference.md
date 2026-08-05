@@ -123,7 +123,8 @@ single `q, qd, qdd` triple.
     "robot_hash": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
     "trajectory_hash": null,
     "q_space_convention": "standard_dh_with_offsets",
-    "timestamp": "2026-06-09T12:34:56Z"
+    "timestamp": "2026-06-09T12:34:56Z",
+    "source_commit": null
   },
   "warnings": []
 }
@@ -150,6 +151,11 @@ Batched inverse dynamics. Same `robot` body; samples are an explicit list.
   ]
 }
 ```
+
+For CR4, `options.fd_step` applies one common finite-difference step to both
+mapping operations. `options.mapping_fd_step` and
+`options.directional_fd_step` override them individually. Values must be finite
+and positive; the selected default for both is `1e-4` rad.
 
 The samples list is bounded to 1..10 000 by a Pydantic field validator
 (`backend/dynamics/schemas.py:96-103`).
@@ -179,17 +185,41 @@ The samples list is bounded to 1..10 000 by a Pydantic field validator
     "robot_hash": "9f86d0...0a08",
     "trajectory_hash": "3b4c5d...ee01",
     "q_space_convention": "standard_dh_with_offsets",
-    "timestamp": "2026-06-09T12:34:56Z"
+    "timestamp": "2026-06-09T12:34:56Z",
+    "source_commit": null
   },
   "diagnostics": [
-    { "constraint_residual_norm": 1.4e-12, "passive_torque_residual_norm": 3.2e-13, "condition_number": 14.7 }
+    {
+      "constraint_residual_norm": 0.0,
+      "position_residual_vectors": [[0,0,0],[0,0,0],[0,0,0]],
+      "position_residual_norms": [0,0,0],
+      "position_residual_stacked_norm": 0.0,
+      "position_residual_max_norm": 0.0,
+      "velocity_closure_residual": [0,0,0,0,0,0,0,0,0],
+      "velocity_closure_residual_norm": 0.0,
+      "acceleration_closure_residual": [0,0,0,0,0,0,0,0,0],
+      "acceleration_closure_residual_norm": 0.0,
+      "passive_torque_residual": [0,0,0,0,0,0],
+      "passive_torque_residual_norm": 3.2e-13,
+      "rank": 6,
+      "rank_tolerance": 2.1e-15,
+      "singular_values": [1.1,1.0,0.8,0.6,0.3,0.1],
+      "condition_number": 11.0,
+      "mapping_fd_step": 0.0001,
+      "directional_fd_step": 0.0001,
+      "diagnostics_pass": true,
+      "diagnostic_failures": []
+    }
   ],
   "warnings": []
 }
 ```
 
 `diagnostics` is only populated for CR4 (CR6 returns `null` and a
-`warnings` array).
+`warnings` array). A rank-deficient CR4 sample uses the string `"infinity"`
+for `condition_number`, because non-finite JSON numbers are not portable. The
+deprecated `constraint_residual_norm` is retained as the old algebraic zero for
+v1 compatibility and is excluded from validation evidence.
 
 ### 2.5 `POST /api/dynamics` *(legacy)*
 
@@ -220,11 +250,18 @@ solver (`backend/api/dynamics.py:239-365`).
 {
   "joint_names": ["J1","J2","J3","J4"],
   "samples":     [{ "time_s": 0.0, "q": [0,0,0,0], "velocity":[0,0,0,0],
-                    "acceleration":[0,0,0,0], "joint_velocity":[0,0,0,0],
-                    "joint_acceleration":[0,0,0,0], "tau":[0,0,0,0] }],
-  "dt_s": 0.005
+                     "acceleration":[0,0,0,0], "joint_velocity":[0,0,0,0],
+                     "joint_acceleration":[0,0,0,0], "tau":[0,0,0,0] }],
+  "dt_s": 0.005,
+  "engine_used": "pro_cr4_kkt",
+  "model_id": "cr4_pinocchio_kkt.v1",
+  "manifest": { "...": "DynamicsManifestModel, including trajectory hash" }
 }
 ```
+
+The legacy endpoint now uses the same joint-limit and TCP endpoint-distance
+duration semantics as the frontend and returns provenance. It remains a
+compatibility convenience; active PRO recording uses `/api/dynamics/batch`.
 
 ### 2.6 `POST /api/dynamics/validate`
 
@@ -350,11 +387,28 @@ class DynamicsManifestModel(BaseModel):
     trajectory_hash: Optional[str] = None
     q_space_convention: str
     timestamp: str
+    source_commit: Optional[str] = None
 
 class CR4DiagnosticsModel(BaseModel):
     constraint_residual_norm: float
+    position_residual_vectors: List[List[float]]
+    position_residual_norms: List[float]
+    position_residual_stacked_norm: float
+    position_residual_max_norm: float
+    velocity_closure_residual: List[float]
+    velocity_closure_residual_norm: float
+    acceleration_closure_residual: List[float]
+    acceleration_closure_residual_norm: float
+    passive_torque_residual: List[float]
     passive_torque_residual_norm: float
-    condition_number: float
+    rank: int
+    rank_tolerance: float
+    singular_values: List[float]
+    condition_number: Union[float, Literal["infinity"]]
+    mapping_fd_step: float
+    directional_fd_step: float
+    diagnostics_pass: bool
+    diagnostic_failures: List[str]
 
 class BatchSampleResponse(BaseModel):
     time_s: float
@@ -383,16 +437,17 @@ def get_robot_hash(robot: dict) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 ```
 
-The cache stores the **already-built** Pinocchio model, constraint models,
-and constraint datas. Building the model is by far the most expensive step
+The cache stores the **already-built** Pinocchio model, constraint models, and
+geometry context. Per-call Pinocchio and constraint data are created locally so
+concurrent requests do not share mutable solver state. First construction is
+protected by a lock. Building the model is by far the most expensive step
 (cold start ~30 s on a typical workstation because of the CR4 closed-chain
 constraint assembly); caching it means subsequent requests for the *same*
 robot are nearly free. The cache is process-local, lives for the lifetime
 of the FastAPI process, and is invalidated on restart.
 
-In the batch endpoint, the cache is checked once at the top of
-`compute_cr4_kkt_batch` and then the per-sample loop reuses the cached
-model (`cr4_kkt.py:482-514`).
+The batch endpoint primes this cache before its per-sample loop; each sample's
+lookup then resolves the same cached model.
 
 ### 4.2 Per-batch trajectory hash (in the response manifest)
 
@@ -406,10 +461,14 @@ manifest = make_manifest(robot_dict, "cr4_pinocchio_kkt.v1",
                          get_trajectory_hash(samples))
 ```
 
-This hash is the audit trail of *exactly which* trajectory was evaluated.
-It is included on the `actuator_sizing_report.v1` envelope so reviewers
-can reproduce a sizing report from its `torque_log_hash` plus the
-`trajectory_hash` field of the original dynamics manifest.
+This hash is the audit trail of *exactly which* trajectory was evaluated. The
+v2 sizing report includes the dynamics manifest, a canonical SHA-256 over the
+complete torque log, a canonical parsed-JSON SHA-256 over the complete catalog,
+an optional raw catalog-file SHA-256, and an optional source commit. Set
+`ROBODIMM_SOURCE_COMMIT` for the backend and
+`VITE_ROBODIMM_SOURCE_COMMIT`/`VITE_ACTUATOR_CATALOG_SHA256` at frontend build
+time to populate release evidence. The canonical catalog hash and raw file hash
+have explicit, distinct scopes.
 
 ### 4.3 Frontend-side cache
 

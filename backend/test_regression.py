@@ -2,20 +2,65 @@ import sys
 import json
 import csv
 import math
+import argparse
+import os
 from pathlib import Path
 from typing import Tuple, List, Dict, Any, Optional
 import numpy as np
 
-# Add kineforge and project root to path dynamically
-sys.path.append(str(Path(__file__).resolve().parents[2] / 'kineforge'))
+# Add the project root to the import path. No external Kineforge checkout is
+# required by either dynamics implementation.
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from backend.dynamics.cr4_kkt import compute_cr4_kkt_dynamics, get_or_build_model, BODY_MASSES
 from backend.dynamics.cr6_serial import compute_cr6_serial_dynamics, build_serial6_template_from_robot
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
-ENSAYOS_CR4 = WORKSPACE_ROOT / "ensayos" / "robodimm_cr4"
-ENSAYOS_CR6 = WORKSPACE_ROOT / "ensayos" / "robodimm_cr6"
+DEFAULT_EXPERIMENTS_ROOT = WORKSPACE_ROOT / "robodimm_paper" / "experiments"
+EXPERIMENTS_ROOT = Path(
+    os.environ.get("ROBODIMM_PAPER_EXPERIMENTS", DEFAULT_EXPERIMENTS_ROOT)
+).resolve()
+DAMPING_PROTOCOL = "E2E-VM05-v1"
+
+
+def _experiment_directories(protocol: str) -> Tuple[Path, Path]:
+    if protocol == "E2E-VM05-v1":
+        root = EXPERIMENTS_ROOT
+    elif protocol == "REG-ZD-v1":
+        # Phase 3 will expose the archived zero-damping fixtures under this
+        # unambiguous location. Never reinterpret E2E-VM05 files as REG-ZD.
+        root = EXPERIMENTS_ROOT / "regression" / "REG-ZD-v1"
+    else:
+        raise ValueError(f"Unsupported damping protocol: {protocol}")
+    return root / "robodimm_cr4", root / "robodimm_cr6"
+
+
+def _require_inputs(manifest_path: Optional[Path], simscape_csv: Path, robot: str) -> Path:
+    missing = []
+    if manifest_path is None:
+        missing.append("reproducibility manifest")
+    if not simscape_csv.exists():
+        missing.append(str(simscape_csv))
+    if missing:
+        raise FileNotFoundError(
+            f"{robot} {DAMPING_PROTOCOL} regression inputs are missing: "
+            + ", ".join(missing)
+        )
+    return manifest_path
+
+
+def _apply_damping_protocol(robot_spec: Dict[str, Any]) -> None:
+    expected = 0.5 if DAMPING_PROTOCOL == "E2E-VM05-v1" else 0.0
+    for limit in robot_spec.get("limits", []):
+        if DAMPING_PROTOCOL == "E2E-VM05-v1":
+            actual = float(limit.get("frictionCoeffNmSPerRad", 0.0))
+            if not math.isclose(actual, expected, rel_tol=0.0, abs_tol=1e-12):
+                raise ValueError(
+                    f"{limit.get('name', 'joint')} damping {actual} does not match "
+                    f"{DAMPING_PROTOCOL} ({expected})"
+                )
+        else:
+            limit["frictionCoeffNmSPerRad"] = expected
 
 
 def _find_manifest(ensayo_dir: Path, name_glob: str) -> Optional[Path]:
@@ -101,23 +146,19 @@ def _apply_cr4_simscape_masses(robot_spec: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def test_cr4_kkt_regression():
-    print("\n--- Running CR4 KKT closed-chain regression test vs Simscape ---")
+    print(f"\n--- Running CR4 KKT regression vs Simscape ({DAMPING_PROTOCOL}) ---")
+    experiments_cr4, _ = _experiment_directories(DAMPING_PROTOCOL)
     # Use demo manifest (authoritative robot spec); fall back to pro if needed.
-    manifest_path = _find_manifest(ENSAYOS_CR4, "*_reproducibility_manifest.json")
-    simscape_csv = ENSAYOS_CR4 / "results" / "robodimm_cr4_simscape_results.csv"
-
-    if not manifest_path or not simscape_csv.exists():
-        print(f"⚠️  Skip: required files not found.")
-        return
+    manifest_path = _find_manifest(experiments_cr4, "*_reproducibility_manifest.json")
+    simscape_csv = experiments_cr4 / "results" / "robodimm_cr4_simscape_results.csv"
+    manifest_path = _require_inputs(manifest_path, simscape_csv, "CR4")
 
     print(f"  Using manifest: {manifest_path}")
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
     robot_spec = manifest.get("robot", manifest)
 
-    # Zero friction to match Simscape (no friction model in Simscape reference)
-    for limit in robot_spec.get("limits", []):
-        limit["frictionCoeffNmSPerRad"] = 0.0
+    _apply_damping_protocol(robot_spec)
 
     # Apply validated Simscape masses (manifest may have empty inertials)
     _apply_cr4_simscape_masses(robot_spec)
@@ -198,11 +239,17 @@ def _test_cr4_specific_features(robot_spec: Dict[str, Any], q_arr, qd_arr, qdd_a
         robot_spec, [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]
     )
     assert abs(tau_home[3]) < 0.01, f"J4 torque at home should be ~0, got {tau_home[3]:.6f}"
-    # At qd=[0,0,0,1], qdd=0 → friction only; since friction=0, J4 torque still ~0
+    # At qd=[0,0,0,1], qdd=0, J4 torque is the protocol's viscous term.
     tau_spin, _, _, _ = compute_cr4_kkt_dynamics(
         robot_spec, [0, 0, 0, 0], [0, 0, 0, 1.0], [0, 0, 0, 0]
     )
-    assert abs(tau_spin[3]) < 0.05, f"J4 torque spinning (no friction): {tau_spin[3]:.6f}"
+    expected_j4_friction = next(
+        float(limit.get("frictionCoeffNmSPerRad", 0.0))
+        for limit in robot_spec.get("limits", [])
+        if limit.get("name") == "J4"
+    )
+    assert abs(tau_spin[3] - expected_j4_friction) < 0.05, \
+        f"J4 spin torque {tau_spin[3]:.6f} does not match viscous term {expected_j4_friction:.6f}"
     print("  ✅ J4 sign convention test passed!")
 
     # 4. Sparse inertials → must use BODY_MASSES (not zero)
@@ -234,23 +281,19 @@ def _test_cr4_specific_features(robot_spec: Dict[str, Any], q_arr, qd_arr, qdd_a
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_cr6_serial_regression():
-    print("\n--- Running CR6 serial open-chain regression test vs Simscape ---")
+    print(f"\n--- Running CR6 serial regression vs Simscape ({DAMPING_PROTOCOL}) ---")
+    _, experiments_cr6 = _experiment_directories(DAMPING_PROTOCOL)
     # Use demo manifest (authoritative; has real inertials from IRB4600 preset)
-    manifest_path = _find_manifest(ENSAYOS_CR6, "*_reproducibility_manifest.json")
-    simscape_csv = ENSAYOS_CR6 / "results" / "robodimm_cr6_simscape_results.csv"
-
-    if not manifest_path or not simscape_csv.exists():
-        print(f"⚠️  Skip: required files not found.")
-        return
+    manifest_path = _find_manifest(experiments_cr6, "*_reproducibility_manifest.json")
+    simscape_csv = experiments_cr6 / "results" / "robodimm_cr6_simscape_results.csv"
+    manifest_path = _require_inputs(manifest_path, simscape_csv, "CR6")
 
     print(f"  Using manifest: {manifest_path}")
     with open(manifest_path, "r") as f:
         manifest = json.load(f)
     robot_spec = manifest.get("robot", manifest)
 
-    # Zero friction to match Simscape
-    for limit in robot_spec.get("limits", []):
-        limit["frictionCoeffNmSPerRad"] = 0.0
+    _apply_damping_protocol(robot_spec)
 
     time_s, q_arr, qd_arr, qdd_arr, tau_simscape = load_csv_data(simscape_csv)
     num_samples = len(time_s)
@@ -343,10 +386,21 @@ def _test_cr6_specific_features(robot_spec: Dict[str, Any]):
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run portable Robodimm/Simscape regression without generating artifacts."
+    )
+    parser.add_argument(
+        "--protocol",
+        choices=("E2E-VM05-v1", "REG-ZD-v1"),
+        default="E2E-VM05-v1",
+        help="Damping/data protocol; defaults to the archived E2E verification available in the paper repository.",
+    )
+    args = parser.parse_args()
+    DAMPING_PROTOCOL = args.protocol
     try:
         test_cr4_kkt_regression()
         test_cr6_serial_regression()
-        print("\n🎉 ALL REGRESSION TESTS PASSED SUCCESSFULLY!")
+        print(f"\n🎉 ALL {DAMPING_PROTOCOL} REGRESSION TESTS PASSED SUCCESSFULLY!")
         sys.exit(0)
     except AssertionError as e:
         print(f"\n❌ REGRESSION TEST FAILED: {e}")

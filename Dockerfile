@@ -10,6 +10,10 @@ COPY package*.json ./
 # Uses npm ci for reproducible builds (requires package-lock.json in repo), or change to "npm install" if not tracking the lockfile
 RUN npm ci
 COPY . .
+ARG ROBODIMM_SOURCE_COMMIT=""
+ARG ACTUATOR_CATALOG_SHA256=""
+ENV VITE_ROBODIMM_SOURCE_COMMIT=${ROBODIMM_SOURCE_COMMIT}
+ENV VITE_ACTUATOR_CATALOG_SHA256=${ACTUATOR_CATALOG_SHA256}
 RUN npm run build
 
 FROM nginx:1.27-alpine

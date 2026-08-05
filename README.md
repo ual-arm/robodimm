@@ -52,12 +52,15 @@ The full-length MP4 is available for download at
   relative to either the **World** or **TCP** frame. Continuous
   mouse-hold jogging.
 - **Duty-cycle sequencer.** `MoveJ`, `MoveL`, and `Pause` instructions
-  with named targets. JSON / YAML program import-export.
+  with named targets. `MoveL` is the legacy label for a joint-space
+  quintic path with a TCP endpoint-distance timing floor, not a Cartesian
+  straight line. JSON / YAML program import-export.
 - **Deterministic actuator sizing.** Six hard pass/fail constraints
-  (continuous output torque, 5× peak, max speed, gearbox continuous,
-  gearbox intermittent, gearbox input speed) and four ranking
-  objectives (`min_mass`, `min_power`, `min_gearbox`, `max_margin`).
-  Full audit manifest: `robodimm.actuator_sizing_report.v1`.
+  (continuous output torque, configurable generic peak assumption, max speed,
+  gearbox continuous, gearbox intermittent, gearbox input speed) and four
+  ranking objectives (`min_mass`, `min_power`, `min_gearbox`, `max_margin`).
+  The output is preliminary design support, not procurement validation. Full
+  audit manifest: `robodimm.actuator_sizing_report.v2`.
 - **Station objects.** Drop GLB environment meshes (tables, fences,
   fixtures) into the world frame without affecting the kinematic
   tree; the loader is a cancellable reconciler that prevents WebGL
@@ -77,11 +80,12 @@ The full-length MP4 is available for download at
   `json.dumps(robot, sort_keys=True)`. Cold start ~30 s; subsequent
   calls are sub-millisecond on cached models.
 - **Viscous friction model.** A scalar $b_i\,\dot q_i$ term per joint,
-  configured by `frictionCoeffNmSPerRad` on the joint limit. Default
-  $b_i = 0$ to match the Simscape reference.
-- **Validation against Simscape.** CR4 KKT reaches a total RMSE of
-  **0.245 Nm** on a representative palletizing trajectory; CR6 RNEA
-  matches to **9.2 × 10⁻¹³ Nm** (floating-point precision).
+  configured by `frictionCoeffNmSPerRad` on the joint limit. Omitted values
+  default to zero; bundled presets use 0.5 N m/(rad/s).
+- **Validation against Simscape.** The submitted archive reports CR4 total
+  RMSE of **0.245 Nm** and CR6 agreement of **9.2 × 10⁻¹³ Nm**. These are
+  historical values, not the final 2026 revision matrix; see the validation
+  document for protocol and geometry qualifications.
 
 ---
 
@@ -89,8 +93,8 @@ The full-length MP4 is available for download at
 
 | Layer | Technologies |
 |---|---|
-| Frontend | React 18, TypeScript ~5.6, Vite 5.4, Three.js 0.184, Zustand 5, Tailwind CSS 3 (via PostCSS), Lucide-React, Recharts |
-| Frontend tests | Vitest 1.6 |
+| Frontend | React 18, TypeScript ~5.6, Vite 8.2, Three.js 0.184, Zustand 5, Tailwind CSS 3 (via PostCSS), Lucide-React, Recharts |
+| Frontend tests | Vitest 4.1 |
 | Backend | Python 3.9–3.10, FastAPI ≥ 0.100, Uvicorn, Pydantic ≥ 2.0 |
 | Dynamics | Pinocchio 4.0.0 (Conda), NumPy ≥ 1.22, SciPy ≥ 1.8 |
 | Packaging | Docker / Docker Compose, nginx 1.27 |
@@ -144,9 +148,14 @@ SHA-256-keyed Pinocchio model cache.
 ### Docker
 
 ```bash
-docker compose up --build                  # frontend on :8080
+ACTUATOR_CATALOG_SHA256=$(sha256sum public/actuators_library.json | cut -d' ' -f1) \
+ROBODIMM_SOURCE_COMMIT=$(git rev-parse HEAD) docker compose up --build
+docker build --build-arg ROBODIMM_SOURCE_COMMIT=$(git rev-parse HEAD) \
+  --build-arg ACTUATOR_CATALOG_SHA256=$(sha256sum public/actuators_library.json | cut -d' ' -f1) \
+  -t robodimm/frontend .
 docker build -f Dockerfile.backend -t robodimm/backend-pro .
-docker run -p 127.0.0.1:8001:8001 robodimm/backend-pro
+docker run -e ROBODIMM_SOURCE_COMMIT=$(git rev-parse HEAD) \
+  -p 127.0.0.1:8001:8001 robodimm/backend-pro
 ```
 
 ---
@@ -160,13 +169,18 @@ npx vitest run -t "CR4"                    # name filter
 npx vitest run src/math/actuators.test.ts  # single file
 
 # Backend (regression vs Simscape)
-mamba run -n robodimm-pro-backend python backend/test_regression.py
+mamba run -n robodimm-pro-backend python -m unittest \
+  backend.test_cr4_kkt_diagnostics backend.test_trajectory_semantics -v
+mamba run -n robodimm-pro-backend python backend/test_cr4_fd_sensitivity.py
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol E2E-VM05-v1
 ```
 
 The Python regression script is **not** collected by `pytest` — it is
 invoked directly because it loads the Simscape CSVs and reproducibility
-manifests from the sibling `../ensayos/robodimm_cr{4,6}/` directory in
-the workspace.
+manifests from the sibling
+`../robodimm_paper/experiments/robodimm_cr{4,6}/` directory. Missing inputs
+fail rather than being reported as a successful skip.
 
 ---
 
@@ -244,7 +258,7 @@ If you use Robodimm in academic work, please cite the SoftwareX paper:
 
 Software and accompanying Simscape reference data are versioned
 together; please pin a specific release tag (e.g. `v1.0.0`) when
-citing, and include the `dynamics_source` field from the
-`actuator_sizing_report.v1` envelope to identify which engine
-(`demo_frontend`, `pro_cr4_kkt`, or `pro_cr6_serial`) produced the
-results.
+citing, and include fields from the `actuator_sizing_report.v2` envelope:
+`dynamics_source` identifies the engine (`demo_frontend`, `pro_cr4_kkt`, or
+`pro_cr6_serial`), while `source_commit` and the provenance hashes identify the
+implementation and inputs.

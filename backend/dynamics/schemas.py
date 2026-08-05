@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Literal, Any
+from typing import List, Dict, Optional, Literal, Any, Union
 from pydantic import BaseModel, Field, field_validator
 
 # Supported robot types
@@ -111,6 +111,7 @@ class DynamicsManifestModel(BaseModel):
     trajectory_hash: Optional[str] = None
     q_space_convention: str
     timestamp: str
+    source_commit: Optional[str] = None
 
 
 class DynamicsResponse(BaseModel):
@@ -123,9 +124,27 @@ class DynamicsResponse(BaseModel):
 
 
 class CR4DiagnosticsModel(BaseModel):
-    constraint_residual_norm: float
+    # Backward-compatible v1 field only. It is an algebraic identity and must
+    # not be interpreted as loop-closure evidence.
+    constraint_residual_norm: float = Field(deprecated=True)
+    position_residual_vectors: List[List[float]]
+    position_residual_norms: List[float]
+    position_residual_stacked_norm: float
+    position_residual_max_norm: float
+    velocity_closure_residual: List[float]
+    velocity_closure_residual_norm: float
+    acceleration_closure_residual: List[float]
+    acceleration_closure_residual_norm: float
+    passive_torque_residual: List[float]
     passive_torque_residual_norm: float
-    condition_number: float
+    rank: int
+    rank_tolerance: float
+    singular_values: List[float]
+    condition_number: Union[float, Literal["infinity"]]
+    mapping_fd_step: float
+    directional_fd_step: float
+    diagnostics_pass: bool
+    diagnostic_failures: List[str] = Field(default_factory=list)
 
 
 class BatchSampleResponse(BaseModel):

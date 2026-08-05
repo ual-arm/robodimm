@@ -104,6 +104,7 @@ export interface MoveJInstruction {
 }
 
 export interface MoveLInstruction {
+  /** Legacy label: joint-space quintic interpolation with a TCP-distance duration floor. */
   type: 'MoveL';
   target_name: string;
   tcp_speed_m_s: number;
@@ -134,13 +135,24 @@ export interface TorqueSample {
   tau: number[];
 }
 
+export interface DynamicsManifest {
+  model_id: string;
+  backend_version: string;
+  pinocchio_version: string;
+  robot_hash: string;
+  trajectory_hash?: string | null;
+  q_space_convention?: string;
+  timestamp?: string;
+  source_commit?: string | null;
+}
+
 export interface TorqueLog {
   joint_names: string[];
   samples: TorqueSample[];
   dt_s: number;
   engine_used?: string;
   model_id?: string;
-  manifest?: any;
+  manifest?: DynamicsManifest;
 }
 
 export type GearboxType = 'harmonic' | 'cycloidal';
@@ -167,6 +179,13 @@ export interface JointDemand {
   power_peak_W: number;
   regen_peak_W: number;
   cycle_time_s: number;
+  /** True only when at least two samples have a strictly increasing time base. */
+  complete: boolean;
+  /** False for a missing, non-finite, or non-monotonic time base. */
+  time_valid: boolean;
+  /** False when a torque or velocity sample is missing or non-finite. */
+  values_valid: boolean;
+  sample_count: number;
 }
 
 export interface MotorSpec {
@@ -233,7 +252,21 @@ export interface ActuatorCandidate {
   speed_margin: number;
   gearbox_continuous_margin: number;
   gearbox_peak_margin: number;
+  gearbox_input_speed_margin: number;
   power_margin: number;
+  /** Safety-adjusted mechanical margins M1 through M6. */
+  mechanical_margins: {
+    M1: number;
+    M2: number;
+    M3: number;
+    M4: number;
+    M5: number;
+    M6: number;
+  };
+  limiting_constraint: 'M1' | 'M2' | 'M3' | 'M4' | 'M5' | 'M6';
+  limiting_margin: number;
+  warnings: string[];
+  power_warning?: string;
   min_margin: number;
   total_mass_kg: number;
   motor: MotorSpec;
@@ -252,14 +285,33 @@ export interface RobotActuatorSelection {
 }
 
 export interface ActuatorSizingReport {
-  schema: "robodimm.actuator_sizing_report.v1";
+  schema: "robodimm.actuator_sizing_report.v2";
   robot_kind: string;
   robot_name: string;
   dynamics_source: string;
   torque_log_hash: string;
+  catalog_hash: string;
+  provenance_hash_algorithm: 'sha256-canonical-json-v1';
+  torque_log_hash_scope: 'parsed_canonical_json';
+  catalog_hash_scope: 'parsed_canonical_json';
+  /** Raw public/actuators_library.json hash injected for release evidence. */
+  catalog_file_sha256: string | null;
+  dynamics_manifest: DynamicsManifest | null;
+  source_commit: string | null;
   catalog_version: string;
   catalog_anonymized: boolean;
   motor_peak_policy: string;
+  motor_peak_assumption: {
+    factor: number;
+    basis: 'generic_benchmark_assumption';
+    manufacturer_backed: false;
+    peak_duration_s: null;
+    peak_duration_known: false;
+  };
+  screening_scope: 'preliminary_actuator_screening';
+  recommendation_type: 'design_support_recommendation';
+  procurement_validated: false;
+  warnings: string[];
   margins: SizingMargins;
   joints: JointActuatorSelection[];
   complete: boolean;

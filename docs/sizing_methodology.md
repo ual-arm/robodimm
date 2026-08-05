@@ -6,7 +6,7 @@ motor–gearbox pair against six hard pass/fail constraints, then ranks the
 passing candidates by the chosen `SizingObjective`. There are **no
 iterative loops** that modify the robot spec.
 
-All logic lives in `src/math/actuators.ts` (393 lines); the input shapes
+All logic lives in `src/math/actuators.ts`; the input shapes
 and output envelope are declared in `src/model/schemas.ts`.
 
 ---
@@ -74,14 +74,16 @@ interface SizingMargins {
   peak: number;                 // ≥ 1.0; default 2.0
   speed: number;                // ≥ 1.0; default 1.2
   power: number;                // ≥ 1.0; default 1.1
-  motorPeakFactor: number;      // 5.0 in the standard policy
+  motorPeakFactor: number;      // configurable; benchmark default 5.0
   enforcePowerLimit?: boolean;  // false → power is a warning, not a fail
   sizingObjective?: SizingObjective;   // default 'min_mass'
 }
 ```
 
-`motorPeakFactor = 5.0` encodes the "5× rated torque" peak-overload policy
-that is standard for short robotic transients; see § 2.2.
+`motorPeakFactor = 5.0` is only the configurable generic assumption used by
+the frozen comparison benchmark. It is not an industry standard or a
+manufacturer-backed capability. Peak duration and thermal duty are unknown;
+see § 3.2.
 
 ### 1.4 The `SizingObjective` enum
 
@@ -95,10 +97,9 @@ The objective changes **only the ranking**, not the hard constraints.
 
 ## 2. Joint demands
 
-`computeJointDemands(torqueLog)` (`actuators.ts:8-69`) computes per-joint
-demands from the log. RMS quantities are integrated with **time-weighted
-trapezoidal accumulation** to handle non-uniform sampling
-(`actuators.ts:24-48`):
+`computeJointDemands(torqueLog)` computes per-joint demands from the log. RMS
+quantities are integrated with **time-weighted trapezoidal accumulation** over
+the measured intervals:
 
 $$
 \tau_{\mathrm{rms}} = \sqrt{\dfrac{\int \tau^2\,dt}{T}}, \quad
@@ -106,12 +107,19 @@ $$
 P_{\mathrm{rms}} = \sqrt{\dfrac{\int P^2\,dt}{T}}
 $$
 
-with $P = \tau\,\dot q$ and $T$ the total sample time (computed as
-$\sum dt$). Sample intervals with $dt \le 0$ are skipped to defend
-against backwards or zero-length jumps. Peak quantities are
-$\max(|x|)$ over the log. The peak regenerative power (negative-power
-events) is tracked separately as `regen_peak_W` for future regen-resistor
-sizing.
+with $P = \tau\,\dot q$, $T=t_{N-1}-t_0$, and
+
+$$
+\int x^2dt \approx \sum_{k=1}^{N-1}
+\frac{x_{k-1}^2+x_k^2}{2}(t_k-t_{k-1}).
+$$
+
+No synthetic interval is prepended to the first sample. Times must be finite
+and strictly increasing, and every joint must have finite torque and velocity
+values at every sample. Fewer than two samples or any invalid input gives zero
+cycle time/RMS and marks the demand and report incomplete; invalid intervals
+are never silently skipped. Peak quantities retain the finite $\max(|x|)$ over
+the log. The peak regenerative power is tracked separately as `regen_peak_W`.
 
 The `JointDemand` object returned per joint is:
 
@@ -126,6 +134,10 @@ interface JointDemand {
   power_peak_W: number;
   regen_peak_W: number;
   cycle_time_s: number;
+  complete: boolean;
+  time_valid: boolean;
+  values_valid: boolean;
+  sample_count: number;
 }
 ```
 
@@ -148,7 +160,7 @@ $$
 Pass if
 $\tau_{\mathrm{out,cont}} \;\ge\; \tau_{\mathrm{rms}} \cdot m_{\mathrm{cont}}$.
 
-### 3.2 Rule 2 — Output peak torque (5× overload policy)
+### 3.2 Rule 2 — Output peak torque (generic benchmark assumption)
 
 $$
 \tau_{\mathrm{out,peak}} \;=\; \tau_{\mathrm{motor,rated}} \cdot b_p \cdot r \cdot \eta
@@ -157,9 +169,10 @@ $$
 Pass if
 $\tau_{\mathrm{out,peak}} \;\ge\; \tau_{\mathrm{peak}} \cdot m_{\mathrm{peak}}$.
 
-The `5× rated torque for short robotic transients` policy is encoded
-verbatim in the produced `ActuatorSizingReport.motor_peak_policy`
-(`actuators.ts:363`).
+The report records the configured factor, marks it as
+`manufacturer_backed: false`, and records unknown peak duration. A catalog
+field such as a manufacturer-backed `peak_torque_Nm` and `peak_duration_s`
+should replace the generic factor when such data become available.
 
 ### 3.3 Rule 3 — Output maximum speed
 
@@ -191,8 +204,8 @@ $$
 
 ### 3.7 Power (warning, by default)
 
-A seventh check compares
-$P_{\mathrm{motor,rated}} \cdot \eta$ against
+A seventh check compares $P_{\mathrm{motor,rated}}$ against the required
+motor-side input power
 $P_{\mathrm{rms}} / \eta \cdot m_{\mathrm{power}}$. By default this
 generates a warning, not a failure (`enforcePowerLimit = false`); set the
 flag in `SizingMargins` to convert it to a hard fail.
@@ -209,16 +222,19 @@ For ranking and inspection, every candidate also exposes
 
 | Metric | Definition |
 |---|---|
-| `continuous_margin` | $\tau_{\mathrm{out,cont}} / \tau_{\mathrm{rms}}$ (∞ if demand is 0) |
-| `peak_margin` | $\tau_{\mathrm{out,peak}} / \tau_{\mathrm{peak}}$ |
-| `speed_margin` | $\omega_{\mathrm{out,max}} / \omega_{\mathrm{peak}}$ |
-| `gearbox_continuous_margin` | $T_{\mathrm{gb,cont}} / \tau_{\mathrm{rms}}$ |
-| `gearbox_peak_margin` | $T_{\mathrm{gb,int}} / \tau_{\mathrm{peak}}$ |
-| `power_margin` | $P_{\mathrm{motor,rated}} \cdot \eta / P_{\mathrm{rms}}$ |
-| `min_margin` | $\min$ of the five mechanical margins (excludes power) |
+| `M1` / `continuous_margin` | $\tau_{\mathrm{out,cont}} /(\tau_{\mathrm{rms}}m_{\mathrm{cont}})$ |
+| `M2` / `peak_margin` | $\tau_{\mathrm{out,peak}} /(\tau_{\mathrm{peak}}m_{\mathrm{peak}})$ |
+| `M3` / `speed_margin` | $\omega_{\mathrm{out,max}} /(\omega_{\mathrm{peak}}m_{\mathrm{speed}})$ |
+| `M4` / `gearbox_continuous_margin` | $T_{\mathrm{gb,cont}} /(\tau_{\mathrm{rms}}m_{\mathrm{cont}})$ |
+| `M5` / `gearbox_peak_margin` | $T_{\mathrm{gb,int}} /(\tau_{\mathrm{peak}}m_{\mathrm{peak}})$ |
+| `M6` / `gearbox_input_speed_margin` | $n_{\mathrm{gb,in,max}} /(n_{\mathrm{demand,in}}m_{\mathrm{speed}})$ |
+| `power_margin` | $P_{\mathrm{motor,rated}} /(P_{\mathrm{rms}}m_{\mathrm{power}}/\eta)$ |
+| `limiting_constraint` | Label of the minimum mechanical margin, tie order M1..M6 |
+| `min_margin` / `limiting_margin` | Minimum of M1..M6 (power excluded) |
 
-`Infinity` is used to represent "demand is 0" so the candidate naturally
-ranks first.
+`Infinity` represents zero demand. A candidate passes mechanically only when
+all finite M1..M6 values are at least one. Incomplete/non-finite inputs force a
+failure rather than producing a procurement-like recommendation.
 
 ---
 
@@ -234,6 +250,8 @@ total-order sort with explicit tie-breakers. The structure is:
    - Lower gear ratio first (`a.ratio - b.ratio`).
    - For objectives other than `max_margin`: higher `min_margin` first
      (∞ first).
+   - Motor ID then gearbox ID in code-point order as the final deterministic
+     tie-breakers.
 
 The four objectives choose their primary key as:
 
@@ -269,22 +287,57 @@ The envelope is the canonical audit document:
 
 ```ts
 interface ActuatorSizingReport {
-  schema: "robodimm.actuator_sizing_report.v1";
+  schema: "robodimm.actuator_sizing_report.v2";
   robot_kind: string;
   robot_name: string;
   dynamics_source: string;     // e.g. 'pro_cr4_kkt'
-  torque_log_hash: string;     // 32-bit djb2 of JSON(tau samples)
+  torque_log_hash: string;     // complete TorqueLog fingerprint
+  catalog_hash: string;        // complete canonical catalog fingerprint
+  provenance_hash_algorithm: "sha256-canonical-json-v1";
+  torque_log_hash_scope: "parsed_canonical_json";
+  catalog_hash_scope: "parsed_canonical_json";
+  catalog_file_sha256: string | null; // raw file hash injected at build
+  dynamics_manifest: DynamicsManifest | null;
+  source_commit: string | null;
   catalog_version: string;
   catalog_anonymized: boolean;
-  motor_peak_policy: "rated_torque_x_5_for_short_robotic_transients";
+  motor_peak_policy: "generic_rated_torque_factor_benchmark_assumption";
+  motor_peak_assumption: {
+    factor: number;
+    manufacturer_backed: false;
+    peak_duration_s: null;
+    peak_duration_known: false;
+  };
+  screening_scope: "preliminary_actuator_screening";
+  recommendation_type: "design_support_recommendation";
+  procurement_validated: false;
+  warnings: string[];
   margins: SizingMargins;
   joints: JointActuatorSelection[];
-  complete: boolean;           // every joint has a best candidate
+  complete: boolean;           // complete demands and a best candidate per joint
 }
 ```
 
-`complete === true` is the green light for "this robot can be built from
-the catalog" — a hard precondition before procurement.
+`complete === true` only means that preliminary actuator screening finished
+and a passing catalog candidate was ranked for each complete demand. It is a
+design-support recommendation, **not procurement validation**. It does not
+validate torque-speed curves, peak duration, thermal duty, reflected inertia,
+gearbox lifetime/fatigue, radial/axial loads, braking/regeneration,
+operating-point efficiency, mechanical integration, vendor approval, or
+physical testing.
+
+The schema was intentionally bumped from v1 to v2 because RMS integration,
+legacy margin aliases, minimum-margin meaning, power margin, and peak-policy
+metadata changed. Archived v1 reports remain historical artifacts; they are not
+silently interpreted as v2 and should be regenerated from their original
+torque log and catalog when comparison is required.
+
+`catalog_hash` hashes parsed canonical JSON and therefore identifies the catalog
+content used by the browser independent of object-key formatting.
+`catalog_file_sha256` is a distinct raw-byte SHA-256 injected through
+`VITE_ACTUATOR_CATALOG_SHA256`; final benchmark evidence must populate it with
+the frozen protocol hash. Neither field is mislabeled or substituted for the
+other.
 
 ---
 
@@ -327,8 +380,8 @@ masses, re-ran dynamics, and re-selected. The current code path is
   and a system engineer must verify the full mass budget before
   procurement. Iterating on the spec silently to make the candidate
   *fit* would mask that verification step.
-- A deterministic, single-pass selection is **reproducible** — the
-  report's `torque_log_hash` and `catalog_version` are sufficient to
+- A deterministic, single-pass selection is **reproducible** — the report's
+  complete-log and complete-catalog fingerprints plus `catalog_version` are sufficient to
   reproduce the same `best` for the same `TorqueLog`.
 
 The legacy function is retained for backwards compatibility with

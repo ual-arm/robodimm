@@ -200,9 +200,9 @@ $$
 
 with the actuated cut indices $(0, 1, 2, 9)$ being $q^{\text{user}}$ itself
 (`cr4_kkt.py:337-359`). The Jacobian $J = \partial q^{\text{cut}}/\partial
-q^{\text{user}}$ is computed by central differences with $\varepsilon = 10^{-6}$
-and angle-unwrapping to keep the cut tree continuous through $2\pi$
-wraps (`mapped_jacobian`, `cr4_kkt.py:362-372`).
+q^{\text{user}}$ is computed by central differences with a parameterized step
+and angle-unwrapping to keep the cut tree continuous through $2\pi$ wraps. The
+frozen sensitivity campaign selected the default $h=10^{-4}$ rad; see § 3.9.
 
 The velocity and acceleration mappings are
 
@@ -212,8 +212,8 @@ $$
 $$
 
 with $\dot J \dot q$ computed by a symmetric difference of Jacobians at
-$q^{\text{user}} \pm \varepsilon \dot q^{\text{user}}$ (`mapped_state`,
-`cr4_kkt.py:375-385`).
+$q^{\text{user}} \pm h\dot q^{\text{user}}$. Mapping and directional steps
+can be overridden independently through solver options.
 
 ### 3.5 Open-loop RNEA on the cut tree
 
@@ -293,19 +293,41 @@ is added per actuated joint using the
 
 ### 3.9 KKT diagnostics
 
-For each sample the backend reports
-(`cr4_kkt.py:466-477`):
+Pinocchio supplies the unfiltered analytic 9×10 `CONTACT_3D` constraint
+Jacobian $J_c$. Finite differences are used in the user-to-cut-tree mapping,
+its directional derivative, and the directional derivative of the analytic
+constraint Jacobian; $J_c$ itself is not finite-differenced.
 
-- `constraint_residual_norm`:
-  $\lVert J_{c,\mathcal{A}}^\top \lambda + \tau^{\text{open}}_{\mathcal{A}} -
-  \tau^{\text{restored}}_{\mathcal{A}} \rVert_2$
-- `passive_torque_residual_norm`:
-  $\lVert \tau^{\text{restored}}_{\mathcal{P}} \rVert_2$
-- `condition_number`: $\sigma_{\max}(J_c)/\sigma_{\min}(J_c)$ from the SVD
+For each sample the backend reports:
 
-These are the metrics asserted against thresholds in
-`backend/test_regression.py` (e.g. J1, J4 RMSE < 0.02 Nm; total RMSE
-< 0.3 Nm).
+- three actual contact-placement residual vectors, their individual norms,
+  stacked norm, and maximum norm;
+- velocity closure $r_v=J_cv_{cut}$;
+- acceleration closure $r_a=J_ca_{cut}+\dot J_cv_{cut}$;
+- passive-torque residual
+  $r_\tau=\tau^{open}_{\mathcal P}+J_{c,\mathcal P}^{\top}\lambda$;
+- the six singular values and numerical rank of the 9×6 passive Jacobian
+  $J_p=J_c[:,\mathcal P]$, with
+  $tol=9\epsilon_{64}\sigma_{max}(J_p)$;
+- the condition number of the solved 6×9 system $J_p^\top$, or the JSON-safe
+  string `"infinity"` when rank is below six;
+- the two finite-difference steps, pass/fail status, and explicit failure list.
+
+Targets are $10^{-8}$ m (position), $10^{-8}$ m/s (velocity), $10^{-6}$
+m/s² (acceleration), rank six outside an explicit singular state, finite
+conditioning, and $10^{-8}$ Nm (passive torque). Failures are returned in both
+`diagnostic_failures` and the response warnings. The deprecated v1
+`constraint_residual_norm` remains zero only for client compatibility; it is an
+algebraic reconstruction identity and must never be used as validation
+evidence.
+
+The predefined common-step campaign in
+`backend/test_cr4_fd_sensitivity.py` tests
+$[10^{-3},10^{-4},10^{-5},10^{-6},10^{-7}]$ rad over all five frozen CR4
+trajectories. Two consecutive stable adjacent pairs select the largest step in
+the first plateau; the selected default is $10^{-4}$ rad for both mapping
+operations. Extended precision is used only while differencing the geometric
+map, then states are converted to float64 before Pinocchio evaluation.
 
 ---
 
@@ -371,7 +393,11 @@ $C^2$-continuous in $q$ (continuous position, velocity, and acceleration).
 The duration is sized by the maximum per-joint delta and the user-supplied
 `speed_rad_s` (with the legacy `1.875` factor that yields a peak
 dimensionless velocity of $1.875$ at $u = 0.5$). `MoveL` extends this with
-a Cartesian duration floor based on `tcp_speed_m_s`.
+a Cartesian endpoint-distance duration floor based on `tcp_speed_m_s`, but it
+still interpolates the target joint vector with the same quintic. Intermediate
+TCP positions are therefore **not** constrained to a Cartesian straight line.
+`MoveL` is retained as a legacy program/schema label and is shown in the UI as
+“joint path, TCP-timed.”
 
 ---
 

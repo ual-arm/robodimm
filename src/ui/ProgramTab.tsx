@@ -448,7 +448,7 @@ export const ProgramTab: React.FC = () => {
                 className="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-slate-200 text-xs focus:outline-none"
               >
                 <option value="MoveJ">MoveJ (Joint)</option>
-                <option value="MoveL">MoveL (Linear)</option>
+                <option value="MoveL">MoveL (joint path, TCP-timed)</option>
                 <option value="Pause">Pause (Wait)</option>
               </select>
             </div>

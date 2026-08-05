@@ -2,9 +2,10 @@ from __future__ import annotations
 import math
 import hashlib
 import json
+import threading
 import numpy as np
 import pinocchio as pin
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Tuple, Any, Optional, Callable
 
 from backend.dynamics.pinocchio_utils import (
     rigid_inertia,
@@ -21,8 +22,27 @@ from backend.dynamics.pinocchio_utils import (
 
 # In-memory cache for built Pinocchio models to avoid rebuilding on every sample
 _MODEL_CACHE: Dict[str, BuiltClosedModel] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
 
 G = 9.80665
+
+# These defaults are selected by the frozen common-step sensitivity ladder.
+# Keep both operations explicit even though the selected values are equal.
+DEFAULT_MAPPING_FD_STEP = 1e-4
+DEFAULT_DIRECTIONAL_FD_STEP = 1e-4
+
+POSITION_RESIDUAL_TARGET_M = 1e-8
+VELOCITY_RESIDUAL_TARGET_M_S = 1e-8
+ACCELERATION_RESIDUAL_TARGET_M_S2 = 1e-6
+PASSIVE_TORQUE_RESIDUAL_TARGET_NM = 1e-8
+
+# Extended precision is used only while finite-differencing the geometric
+# user-to-cut-tree map. Pinocchio still receives float64 state vectors.
+_FD_DTYPE = (
+    np.longdouble
+    if np.finfo(np.longdouble).eps < np.finfo(np.float64).eps
+    else np.float64
+)
 
 # Default masses matching the moderated Robodimm/essay CR4 preset.
 BODY_MASSES = {
@@ -258,14 +278,38 @@ def build_closed_pinocchio_model(robot: dict[str, Any]) -> BuiltClosedModel:
 
 def get_or_build_model(robot: dict[str, Any]) -> BuiltClosedModel:
     robot_hash = get_robot_hash(robot)
-    if robot_hash not in _MODEL_CACHE:
-        _MODEL_CACHE[robot_hash] = build_closed_pinocchio_model(robot)
-    return _MODEL_CACHE[robot_hash]
+    cached = _MODEL_CACHE.get(robot_hash)
+    if cached is not None:
+        return cached
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(robot_hash)
+        if cached is None:
+            cached = build_closed_pinocchio_model(robot)
+            _MODEL_CACHE[robot_hash] = cached
+    return cached
+
+
+def _unit_preserving_precision(vector: np.ndarray) -> np.ndarray:
+    norm = np.sqrt(np.sum(vector * vector))
+    if norm <= 1e-12:
+        raise ValueError("Zero-length vector")
+    return vector / norm
+
+
+def _frame_rotation_preserving_precision(
+    first: np.ndarray, second: np.ndarray
+) -> np.ndarray:
+    x_axis = _unit_preserving_precision(second - first)
+    y_seed = np.array([0.0, 1.0, 0.0], dtype=x_axis.dtype)
+    z_axis = _unit_preserving_precision(np.cross(x_axis, y_seed))
+    y_axis = np.cross(z_axis, x_axis)
+    return np.column_stack((x_axis, y_axis, z_axis))
 
 
 def closed_chain_points(geom: Cr4GeometryContext, j2: float, j3: float) -> dict[str, np.ndarray]:
     home = geom.points
-    points = {key: value.copy() for key, value in home.items()}
+    dtype = np.result_type(j2, j3, np.float64)
+    points = {key: value.astype(dtype, copy=True) for key, value in home.items()}
     o = points["O"]
     
     # 2D Rotations around -Y (Y is vertical-right, standard Pinocchio RY rotation)
@@ -280,9 +324,9 @@ def closed_chain_points(geom: Cr4GeometryContext, j2: float, j3: float) -> dict[
     points["E"] = points["D"] + (points["C"] - o)
     
     cp = points["C"] - points["P"]
-    points["H"] = points["P"] + unit(cp) * geom.lengths["PH"]
+    points["H"] = points["P"] + _unit_preserving_precision(cp) * geom.lengths["PH"]
     
-    rot_ce = frame_rotation(points["C"], points["E"])
+    rot_ce = _frame_rotation_preserving_precision(points["C"], points["E"])
     points["F"] = points["C"] + rot_ce @ local_point(home, "F", "C", "E")
     
     # linkage circle intersection for point G
@@ -293,7 +337,7 @@ def closed_chain_points(geom: Cr4GeometryContext, j2: float, j3: float) -> dict[
         home["G"], pref_side
     )
     
-    rot_hg = frame_rotation(points["H"], points["G"])
+    rot_hg = _frame_rotation_preserving_precision(points["H"], points["G"])
     points["J4"] = points["H"] + rot_hg @ local_point(home, "J4", "H", "G")
     points["EE"] = points["H"] + rot_hg @ local_point(home, "EE", "H", "G")
     points["TCP"] = points["H"] + rot_hg @ local_point(home, "TCP", "H", "G")
@@ -307,11 +351,11 @@ def circle_intersection_xz(
 ) -> np.ndarray:
     delta = center_b - center_a
     dxz = np.array([delta[0], delta[2]])
-    dist = float(np.linalg.norm(dxz))
+    dist = np.sqrt(np.sum(dxz * dxz))
     if dist <= 1e-12:
         raise ValueError("Linkage circle centers are coincident")
     a = (radius_a * radius_a - radius_b * radius_b + dist * dist) / (2.0 * dist)
-    h = float(math.sqrt(max(radius_a * radius_a - a * a, 0.0)))
+    h = np.sqrt(np.maximum(radius_a * radius_a - a * a, 0.0))
     ex = dxz / dist
     base = np.array([center_a[0] + a * ex[0], center_a[2] + a * ex[1]])
     perp = np.array([-ex[1], ex[0]])
@@ -325,17 +369,20 @@ def circle_intersection_xz(
     if not filtered:
         filtered = list(candidates)
     preferred = np.array([prefer[0], prefer[2]])
-    best = min(filtered, key=lambda candidate: float(np.linalg.norm(candidate - preferred)))
-    return np.array([best[0], 0.0, best[1]], dtype=float)
+    best = min(
+        filtered,
+        key=lambda candidate: float(np.sum((candidate - preferred) ** 2)),
+    )
+    return np.array([best[0], 0.0, best[1]], dtype=best.dtype)
 
 
-def angle(a: np.ndarray, b: np.ndarray) -> float:
+def angle(a: np.ndarray, b: np.ndarray) -> np.floating:
     d = b - a
-    return float(np.arctan2(d[2], d[0]))
+    return np.arctan2(d[2], d[0])
 
 
 def closed_full_configuration(geom: Cr4GeometryContext, q_user: np.ndarray) -> np.ndarray:
-    _j1, j2, j3, j4 = map(float, q_user)
+    _j1, j2, j3, j4 = q_user
     points = closed_chain_points(geom, j2, j3)
     theta_ob = angle(points["O"], points["B"])
     theta_oc = angle(points["O"], points["C"])
@@ -356,45 +403,151 @@ def closed_full_configuration(geom: Cr4GeometryContext, q_user: np.ndarray) -> n
         -(theta_fg - theta_cef),
         -(theta_hgee - theta_pch),
         q_user[3],
-    ], dtype=float)
+    ], dtype=np.result_type(q_user.dtype, np.float64))
 
 
-def mapped_jacobian(map_fn, q_user: np.ndarray) -> np.ndarray:
-    q0 = np.asarray(q_user, dtype=float)
+def _fd_step(options: Dict[str, Any], name: str, default: float) -> float:
+    """Read and validate one finite-difference step from solver options."""
+    value = options.get(name, default)
+    try:
+        value = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite positive number") from exc
+    if not np.isfinite(value) or value <= 0.0:
+        raise ValueError(f"{name} must be a finite positive number")
+    return value
+
+
+def resolve_fd_steps(options: Optional[Dict[str, Any]]) -> tuple[float, float]:
+    """Resolve mapping and directional FD steps, retaining legacy defaults.
+
+    ``fd_step`` is a convenience for the common-step sensitivity campaign.
+    Explicit operation-specific options take precedence, which also permits
+    reproducing the historical 1e-6/1e-5 pair.
+    """
+    values = options or {}
+    common = values.get("fd_step")
+    mapping_default = DEFAULT_MAPPING_FD_STEP if common is None else common
+    directional_default = DEFAULT_DIRECTIONAL_FD_STEP if common is None else common
+    mapping_step = _fd_step(values, "mapping_fd_step", mapping_default)
+    directional_step = _fd_step(values, "directional_fd_step", directional_default)
+    return mapping_step, directional_step
+
+
+def mapped_jacobian(
+    map_fn: Callable[[np.ndarray], np.ndarray],
+    q_user: np.ndarray,
+    fd_step: float = DEFAULT_MAPPING_FD_STEP,
+) -> np.ndarray:
+    fd_step = float(fd_step)
+    if not np.isfinite(fd_step) or fd_step <= 0.0:
+        raise ValueError("fd_step must be a finite positive number")
+    q0 = np.asarray(q_user, dtype=_FD_DTYPE)
     f0 = map_fn(q0)
     jacobian = np.zeros((f0.size, q0.size))
-    eps = 1e-6
     for index in range(q0.size):
         step = np.zeros_like(q0)
-        step[index] = eps
+        step[index] = fd_step
         pair = np.unwrap(np.vstack((map_fn(q0 - step), map_fn(q0 + step))), axis=0)
-        jacobian[:, index] = (pair[1] - pair[0]) / (2.0 * eps)
+        jacobian[:, index] = (pair[1] - pair[0]) / (2.0 * fd_step)
     return jacobian
 
 
-def mapped_state(map_fn, q_user: np.ndarray, qd_user: np.ndarray, qdd_user: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    q0 = np.asarray(q_user, dtype=float)
-    qd = np.asarray(qd_user, dtype=float)
-    qdd = np.asarray(qdd_user, dtype=float)
+def mapped_state(
+    map_fn: Callable[[np.ndarray], np.ndarray],
+    q_user: np.ndarray,
+    qd_user: np.ndarray,
+    qdd_user: np.ndarray,
+    mapping_fd_step: float = DEFAULT_MAPPING_FD_STEP,
+    directional_fd_step: float = DEFAULT_DIRECTIONAL_FD_STEP,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    q0 = np.asarray(q_user, dtype=_FD_DTYPE)
+    qd = np.asarray(qd_user, dtype=_FD_DTYPE)
+    qdd = np.asarray(qdd_user, dtype=_FD_DTYPE)
     f0 = map_fn(q0)
-    jacobian = mapped_jacobian(map_fn, q0)
-    eps = 1e-5
-    jacobian_plus = mapped_jacobian(map_fn, q0 + eps * qd)
-    jacobian_minus = mapped_jacobian(map_fn, q0 - eps * qd)
-    jdot_qd = ((jacobian_plus - jacobian_minus) / (2.0 * eps)) @ qd
+    jacobian = mapped_jacobian(map_fn, q0, mapping_fd_step)
+    jacobian_plus = mapped_jacobian(
+        map_fn, q0 + directional_fd_step * qd, mapping_fd_step
+    )
+    jacobian_minus = mapped_jacobian(
+        map_fn, q0 - directional_fd_step * qd, mapping_fd_step
+    )
+    jdot_qd = ((jacobian_plus - jacobian_minus) / (2.0 * directional_fd_step)) @ qd
     return f0, jacobian @ qd, jacobian @ qdd + jdot_qd
 
 
-def closed_torque_to_user(geom: Cr4GeometryContext, q_user: np.ndarray, tau_actuated_pin: np.ndarray) -> np.ndarray:
+def closed_torque_to_user(
+    geom: Cr4GeometryContext,
+    q_user: np.ndarray,
+    tau_actuated_pin: np.ndarray,
+    mapping_fd_step: float = DEFAULT_MAPPING_FD_STEP,
+) -> np.ndarray:
     def actuated_cut_configuration(value: np.ndarray) -> np.ndarray:
         q_closed = closed_full_configuration(geom, value)
         return q_closed[[0, 1, 2, 9]]
 
-    jacobian = mapped_jacobian(actuated_cut_configuration, q_user)
+    jacobian = mapped_jacobian(actuated_cut_configuration, q_user, mapping_fd_step)
     tau_user = jacobian.T @ tau_actuated_pin
     # Simscape reports J4 actuation torque with the opposite sign after vertical re-alignment
     tau_user[3] *= -1.0
     return tau_user
+
+
+def _constraint_kinematics(
+    built: BuiltClosedModel,
+    q_closed: np.ndarray,
+) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Return the analytic CONTACT_3D Jacobian and actual contact positions.
+
+    Pinocchio's ``getConstraintsJacobian`` is deliberately used without row
+    filtering.  The three CONTACT_3D constraints therefore always contribute
+    their nine analytic rows, including rows that may be numerically small at
+    a particular configuration.
+    """
+    model = built.model
+    data = model.createData()
+    constraint_datas = [constraint.createData() for constraint in built.constraints]
+
+    pin.forwardKinematics(model, data, q_closed)
+    pin.computeJointJacobians(model, data, q_closed)
+    data.q_in = q_closed
+    for constraint_model, constraint_data in zip(built.constraints, constraint_datas):
+        constraint_model.calc(model, data, constraint_data)
+
+    jacobian_c = np.asarray(
+        pin.getConstraintsJacobian(model, data, built.constraints, constraint_datas),
+        dtype=float,
+    )
+    expected_shape = (3 * len(built.constraints), model.nv)
+    if jacobian_c.shape != expected_shape:
+        raise ValueError(
+            "Pinocchio CONTACT_3D Jacobian has unexpected shape "
+            f"{jacobian_c.shape}; expected {expected_shape}"
+        )
+
+    # oMc1/oMc2 are the world placements of the two actual contact frames
+    # after calc(), rather than reconstructed hardpoint coordinates.
+    position_residuals = [
+        np.asarray(constraint_data.oMc1.translation - constraint_data.oMc2.translation, dtype=float)
+        for constraint_data in constraint_datas
+    ]
+    return jacobian_c, position_residuals
+
+
+def _constraint_jacobian_directional_derivative(
+    built: BuiltClosedModel,
+    q_closed: np.ndarray,
+    v_closed: np.ndarray,
+    fd_step: float,
+) -> np.ndarray:
+    """Differentiate the analytic constraint Jacobian along the actual state."""
+    jacobian_plus, _ = _constraint_kinematics(
+        built, q_closed + fd_step * v_closed
+    )
+    jacobian_minus, _ = _constraint_kinematics(
+        built, q_closed - fd_step * v_closed
+    )
+    return (jacobian_plus - jacobian_minus) / (2.0 * fd_step)
 
 
 def compute_cr4_kkt_dynamics(
@@ -403,7 +556,7 @@ def compute_cr4_kkt_dynamics(
     qd: List[float],
     qdd: List[float],
     options: Dict[str, Any] = None
-) -> Tuple[List[float], List[float], Dict[str, float], List[str]]:
+) -> Tuple[List[float], List[float], Dict[str, Any], List[str]]:
     """
     Computes inverse dynamics for a single sample of CR4 using closed-chain KKT.
     Returns:
@@ -412,6 +565,9 @@ def compute_cr4_kkt_dynamics(
         diagnostics: dictionary containing KKT diagnostics
         warnings: warning messages generated during calculation
     """
+    options = options or {}
+    mapping_fd_step, directional_fd_step = resolve_fd_steps(options)
+
     built = get_or_build_model(robot_spec)
     model = built.model
     data = model.createData()
@@ -423,35 +579,80 @@ def compute_cr4_kkt_dynamics(
     # 1. State Mapping: User Space -> Pinocchio Cut Tree space
     q_closed, v_closed, a_closed = mapped_state(
         lambda val: closed_full_configuration(built.geom, val), 
-        q_user, qd_user, qdd_user
+        q_user,
+        qd_user,
+        qdd_user,
+        mapping_fd_step=mapping_fd_step,
+        directional_fd_step=directional_fd_step,
     )
+    q_closed = np.asarray(q_closed, dtype=np.float64)
+    v_closed = np.asarray(v_closed, dtype=np.float64)
+    a_closed = np.asarray(a_closed, dtype=np.float64)
 
     # 2. Pinocchio Open-Loop dynamics
     tau_open = np.asarray(pin.rnea(model, data, q_closed, v_closed, a_closed), dtype=float)
 
-    # 3. Kinematic constraints calculation
+    # 3. Kinematic constraints calculation.  Pinocchio supplies the analytic
+    # 9x10 CONTACT_3D Jacobian; no small-row filtering is applied.
     pin.forwardKinematics(model, data, q_closed, v_closed, a_closed)
     pin.computeJointJacobians(model, data, q_closed)
     data.q_in = q_closed
 
-    for constraint_model, constraint_data in zip(built.constraints, built.constraint_datas):
+    constraint_datas = [constraint.createData() for constraint in built.constraints]
+    for constraint_model, constraint_data in zip(built.constraints, constraint_datas):
         constraint_model.calc(model, data, constraint_data)
         
-    jacobian_c = np.asarray(pin.getConstraintsJacobian(model, data, built.constraints, built.constraint_datas), dtype=float)
-    jacobian_c = jacobian_c[np.linalg.norm(jacobian_c, axis=1) > 1e-10]
+    jacobian_c = np.asarray(
+        pin.getConstraintsJacobian(model, data, built.constraints, constraint_datas),
+        dtype=float,
+    )
+    expected_jacobian_shape = (9, model.nv)
+    if jacobian_c.shape != expected_jacobian_shape:
+        raise ValueError(
+            "Pinocchio CONTACT_3D Jacobian has unexpected shape "
+            f"{jacobian_c.shape}; expected {expected_jacobian_shape}"
+        )
+
+    position_residuals = [
+        np.asarray(constraint_data.oMc1.translation - constraint_data.oMc2.translation, dtype=float)
+        for constraint_data in constraint_datas
+    ]
+    velocity_residual = jacobian_c @ v_closed
+    constraint_jdot = _constraint_jacobian_directional_derivative(
+        built, q_closed, v_closed, directional_fd_step
+    )
+    acceleration_residual = jacobian_c @ a_closed + constraint_jdot @ v_closed
 
     # 4. KKT system solver: solve Lagrange multipliers forcing passive joint torques to zero
     actuated = [0, 1, 2, model.joints[built.joint_ids["J4"]].idx_v]
     passive = [idx for idx in range(model.nv) if idx not in actuated]
 
-    lambdas = np.linalg.lstsq(jacobian_c[:, passive].T, -tau_open[passive], rcond=None)[0]
+    jacobian_p = jacobian_c[:, passive]
+    solved_system = jacobian_p.T
+    singular_values = np.linalg.svd(jacobian_p, compute_uv=False)
+    solved_singular_values = np.linalg.svd(solved_system, compute_uv=False)
+    sigma_max = float(singular_values[0]) if singular_values.size else 0.0
+    rank_tolerance = max(solved_system.shape) * np.finfo(np.float64).eps * sigma_max
+    rank = int(np.count_nonzero(singular_values > rank_tolerance))
+    if sigma_max > 0.0:
+        lstsq_rcond = rank_tolerance / sigma_max
+    else:
+        lstsq_rcond = 0.0
+    lambdas = np.linalg.lstsq(
+        solved_system, -tau_open[passive], rcond=lstsq_rcond
+    )[0]
     
     # Restored torques
     tau_restored = tau_open + jacobian_c.T @ lambdas
     tau_actuated = tau_restored[actuated]
 
     # 5. Torque Projection back to User Space
-    tau_user = closed_torque_to_user(built.geom, q_user, tau_actuated)
+    tau_user = np.asarray(
+        closed_torque_to_user(
+            built.geom, q_user, tau_actuated, mapping_fd_step=mapping_fd_step
+        ),
+        dtype=np.float64,
+    )
 
     # Add joint viscous friction in user space
     limits_by_name = {limit["name"]: limit for limit in robot_spec.get("limits", [])}
@@ -462,33 +663,92 @@ def compute_cr4_kkt_dynamics(
 
     power_user = tau_user * qd_user
 
-    # 6. Diagnostics metrics
-    constraint_residual = np.linalg.norm(jacobian_c[:, actuated].T @ lambdas + tau_open[actuated] - tau_restored[actuated])
-    passive_residual = np.linalg.norm(tau_restored[passive])
-    
-    # SVD for condition number of constraints Jacobian
-    singular_values = np.linalg.svd(jacobian_c, compute_uv=False)
-    cond = float(singular_values[0] / singular_values[-1]) if len(singular_values) > 0 and singular_values[-1] > 1e-10 else 1.0
+    # 6. Diagnostics metrics.  The passive residual is evaluated from the
+    # solved passive-torque equation and is not the old algebraic zero check
+    # on the actuated torque reconstruction.
+    passive_residual_vector = tau_open[passive] + solved_system @ lambdas
+    passive_residual = np.linalg.norm(passive_residual_vector)
+    condition: float | str = (
+        float(solved_singular_values[0] / solved_singular_values[-1])
+        if rank == len(passive) and solved_singular_values.size == len(passive)
+        else "infinity"
+    )
+    position_norms = [float(np.linalg.norm(residual)) for residual in position_residuals]
+    velocity_norm = float(np.linalg.norm(velocity_residual))
+    acceleration_norm = float(np.linalg.norm(acceleration_residual))
+
+    diagnostic_failures = []
+    finite_arrays = (
+        position_residuals,
+        velocity_residual,
+        acceleration_residual,
+        passive_residual_vector,
+        singular_values,
+    )
+    if not all(np.all(np.isfinite(value)) for value in finite_arrays):
+        diagnostic_failures.append("one or more diagnostic values are non-finite")
+    if isinstance(condition, float) and not math.isfinite(condition):
+        diagnostic_failures.append("solved-system condition number is non-finite")
+    if rank != len(passive):
+        diagnostic_failures.append(f"Jc_passive rank is {rank}; expected {len(passive)}")
+    if max(position_norms, default=0.0) > POSITION_RESIDUAL_TARGET_M:
+        diagnostic_failures.append(
+            f"position residual exceeds {POSITION_RESIDUAL_TARGET_M:.0e} m"
+        )
+    if velocity_norm > VELOCITY_RESIDUAL_TARGET_M_S:
+        diagnostic_failures.append(
+            f"velocity residual exceeds {VELOCITY_RESIDUAL_TARGET_M_S:.0e} m/s"
+        )
+    if acceleration_norm > ACCELERATION_RESIDUAL_TARGET_M_S2:
+        diagnostic_failures.append(
+            f"acceleration residual exceeds {ACCELERATION_RESIDUAL_TARGET_M_S2:.0e} m/s^2"
+        )
+    if passive_residual > PASSIVE_TORQUE_RESIDUAL_TARGET_NM:
+        diagnostic_failures.append(
+            f"passive-torque residual exceeds {PASSIVE_TORQUE_RESIDUAL_TARGET_NM:.0e} Nm"
+        )
 
     diagnostics = {
-        "constraint_residual_norm": float(constraint_residual),
+        # Backward-compatible v1 field. It remains the deprecated algebraic
+        # identity and is never used as loop-closure evidence.
+        "constraint_residual_norm": 0.0,
+        "position_residual_vectors": [residual.tolist() for residual in position_residuals],
+        "position_residual_norms": position_norms,
+        "position_residual_stacked_norm": float(np.linalg.norm(position_residuals)),
+        "position_residual_max_norm": max(position_norms, default=0.0),
+        "velocity_closure_residual": velocity_residual.tolist(),
+        "velocity_closure_residual_norm": velocity_norm,
+        "acceleration_closure_residual": acceleration_residual.tolist(),
+        "acceleration_closure_residual_norm": acceleration_norm,
+        "passive_torque_residual": passive_residual_vector.tolist(),
         "passive_torque_residual_norm": float(passive_residual),
-        "condition_number": cond
+        "rank": rank,
+        "rank_tolerance": float(rank_tolerance),
+        "singular_values": singular_values.tolist(),
+        "condition_number": condition,
+        "mapping_fd_step": mapping_fd_step,
+        "directional_fd_step": directional_fd_step,
+        "diagnostics_pass": not diagnostic_failures,
+        "diagnostic_failures": diagnostic_failures,
     }
 
-    return tau_user.tolist(), power_user.tolist(), diagnostics, []
+    warnings = [
+        f"CR4 KKT diagnostic target failed: {failure}"
+        for failure in diagnostic_failures
+    ]
+    return tau_user.tolist(), power_user.tolist(), diagnostics, warnings
 
 
 def compute_cr4_kkt_batch(
     robot_spec: Dict[str, Any],
     samples: List[Dict[str, Any]],
     options: Dict[str, Any] = None
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, float]], List[str]]:
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
     """
     Computes inverse dynamics for a batch trajectory of CR4 using closed-chain KKT.
     Loads/caches the model once, then evaluates for all samples.
     """
-    built = get_or_build_model(robot_spec)
+    get_or_build_model(robot_spec)
     
     out_samples = []
     out_diags = []
@@ -510,5 +770,5 @@ def compute_cr4_kkt_batch(
         all_warnings.extend(warnings)
 
     # Unique warnings only
-    unique_warnings = list(set(all_warnings))
+    unique_warnings = list(dict.fromkeys(all_warnings))
     return out_samples, out_diags, unique_warnings

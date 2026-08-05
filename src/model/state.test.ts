@@ -513,7 +513,14 @@ describe('Robodimm state store regression tests', () => {
       await store.runSignalRecording();
 
       expect(mockCalculateBackendBatchDynamics).toHaveBeenCalled();
-      expect(useRobodimmStore.getState().torqueLog).toEqual(mockResult);
+      expect(useRobodimmStore.getState().torqueLog).toEqual({
+        ...mockResult,
+        samples: mockResult.samples.map(sample => ({
+          ...sample,
+          joint_velocity: sample.velocity,
+          joint_acceleration: sample.acceleration
+        }))
+      });
       expect(useRobodimmStore.getState().isRecording).toBe(false);
     });
 

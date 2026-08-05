@@ -1,7 +1,9 @@
 import json
 import hashlib
 import math
+import os
 import time
+import numpy as np
 import pinocchio as pin
 from typing import Dict, Any, List
 from fastapi import APIRouter, HTTPException
@@ -20,8 +22,17 @@ from backend.dynamics.schemas import (
     CR4DiagnosticsModel
 )
 from backend.dynamics.validation import validate_cr4_geometry, validate_cr6_geometry
-from backend.dynamics.cr4_kkt import compute_cr4_kkt_dynamics, compute_cr4_kkt_batch
-from backend.dynamics.cr6_serial import compute_cr6_serial_dynamics, compute_cr6_serial_batch
+from backend.dynamics.cr4_kkt import (
+    Cr4GeometryContext,
+    closed_chain_points,
+    compute_cr4_kkt_dynamics,
+    compute_cr4_kkt_batch,
+)
+from backend.dynamics.cr6_serial import (
+    build_serial6_template_from_robot,
+    compute_cr6_serial_dynamics,
+    compute_cr6_serial_batch,
+)
 
 router = APIRouter()
 
@@ -58,7 +69,8 @@ def make_manifest(robot: dict, model_id: str, trajectory_hash: str = None) -> Dy
         robot_hash=get_robot_hash(robot),
         trajectory_hash=trajectory_hash,
         q_space_convention="standard_dh_with_offsets",
-        timestamp=datetime.utcnow().isoformat() + "Z"
+        timestamp=datetime.utcnow().isoformat() + "Z",
+        source_commit=os.environ.get("ROBODIMM_SOURCE_COMMIT"),
     )
 
 @router.post("/dynamics/inverse", response_model=DynamicsResponse)
@@ -243,10 +255,61 @@ def build_program_trajectory_py(start_q, program, active_robot, dt_s=0.005):
     qds = [[0.0] * len(start_q)]
     qdds = [[0.0] * len(start_q)]
 
-    # Mock tool flange distance checks
+    limits = active_robot.get("limits", [])
+    cr4_geometry = (
+        Cr4GeometryContext(active_robot["geometry"])
+        if active_robot["kind"] == "CR4"
+        else None
+    )
+    cr6_template = (
+        build_serial6_template_from_robot(active_robot)
+        if active_robot["kind"] == "CR6"
+        else None
+    )
+
+    def clamp_configuration(q_vals):
+        clamped = np.asarray(q_vals, dtype=float).copy()
+        for index, limit in enumerate(limits[: len(clamped)]):
+            clamped[index] = np.clip(
+                clamped[index],
+                float(limit.get("lowerLimitRad", -math.inf)),
+                float(limit.get("upperLimitRad", math.inf)),
+            )
+        return clamped
+
     def get_tcp_position(q_vals):
-        # Simplification for legacy path distance calculations
-        return [0.0, 0.0, 0.0]
+        q_clamped = clamp_configuration(q_vals)
+        if cr4_geometry is not None:
+            planar = closed_chain_points(
+                cr4_geometry, q_clamped[1], q_clamped[2]
+            )["TCP"]
+            cosine = math.cos(float(q_clamped[0]))
+            sine = math.sin(float(q_clamped[0]))
+            return [
+                cosine * float(planar[0]) - sine * float(planar[1]),
+                sine * float(planar[0]) + cosine * float(planar[1]),
+                float(planar[2]),
+            ]
+        if cr6_template is None:
+            raise ValueError("Unsupported robot kind for trajectory generation")
+        return cr6_template.forward_kinematics(q_clamped).tcp_transform[:3, 3].tolist()
+
+    def apply_physical_duration_limits(duration_s, current, target):
+        for index in range(len(current)):
+            delta = abs(float(target[index]) - float(current[index]))
+            if delta <= 1e-6:
+                continue
+            limit = limits[index] if index < len(limits) else {}
+            velocity_limit = float(limit.get("maxVelocityRadS", 3.0))
+            acceleration_limit = float(limit.get("maxAccelerationRadS2", 15.0))
+            if velocity_limit <= 0.0 or acceleration_limit <= 0.0:
+                raise ValueError("Joint velocity and acceleration limits must be positive")
+            duration_s = max(
+                duration_s,
+                (1.875 * delta) / velocity_limit,
+                math.sqrt((5.7735 * delta) / acceleration_limit),
+            )
+        return max(duration_s, dt_s)
 
     for inst in program['instructions']:
         itype = inst['type']
@@ -259,7 +322,9 @@ def build_program_trajectory_py(start_q, program, active_robot, dt_s=0.005):
             max_delta = 0.0
             for i in range(len(current_q)):
                 max_delta = max(max_delta, abs(target_q[i] - current_q[i]))
-            duration_s = max((1.875 * max_delta) / speed, dt_s)
+            duration_s = apply_physical_duration_limits(
+                (1.875 * max_delta) / speed, current_q, target_q
+            )
             append_quintic_segment(times, qs, qds, qdds, current_q, target_q, duration_s, dt_s)
             current_q = list(target_q)
 
@@ -276,12 +341,9 @@ def build_program_trajectory_py(start_q, program, active_robot, dt_s=0.005):
                 target_pos[2] - start_pos[2]
             )
             tcp_speed = max(float(inst.get('tcp_speed_m_s', 0.1)), 1e-4)
-            duration_s = max(distance / tcp_speed, dt_s)
-
-            max_delta = 0.0
-            for i in range(len(current_q)):
-                max_delta = max(max_delta, abs(target_q[i] - current_q[i]))
-            duration_s = max(duration_s, (1.875 * max_delta) / tcp_speed)
+            duration_s = apply_physical_duration_limits(
+                distance / tcp_speed, current_q, target_q
+            )
 
             append_quintic_segment(times, qs, qds, qdds, current_q, target_q, duration_s, dt_s)
             current_q = list(target_q)
@@ -355,11 +417,24 @@ def calculate_legacy_dynamics(req: LegacyDynamicsRequest):
                 })
                 
         joint_names = [limit['name'] for limit in robot['limits']]
+        model_id = (
+            "cr6_serial6_template.v1"
+            if robot["kind"] == "CR6"
+            else "cr4_pinocchio_kkt.v1"
+        )
+        engine_used = (
+            "pro_cr6_serial" if robot["kind"] == "CR6" else "pro_cr4_kkt"
+        )
         
         return {
             "joint_names": joint_names,
             "samples": samples,
-            "dt_s": dt_s
+            "dt_s": dt_s,
+            "engine_used": engine_used,
+            "model_id": model_id,
+            "manifest": make_manifest(
+                robot, model_id, get_trajectory_hash(samples_input)
+            ).model_dump(),
         }
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err))

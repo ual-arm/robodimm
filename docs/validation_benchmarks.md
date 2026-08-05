@@ -5,10 +5,10 @@ against an independent ground-truth model (Simscape Multibody™), reports
 the joint-level and total RMSE achieved on both supported robot
 families, and describes how to reproduce the comparison.
 
-The reference suite is **not** a `pytest` test. It is a stand-alone
-script that loads a reproducibility manifest and a Simscape-generated
-CSV from the sibling `ensayos/` directory in the workspace, runs the
-PRO backend on every sample, and reports the residuals.
+The reference suite is a stand-alone script rather than a normal fast unit
+test. It loads a reproducibility manifest and Simscape-generated CSV from the
+sibling `robodimm_paper/experiments/` repository, runs the PRO backend on every
+sample, and reports residuals. It never generates or modifies evidence.
 
 ---
 
@@ -34,25 +34,22 @@ Multibody™ pipeline. For each robot family:
 3. **Simscape simulation.** The Simscape model is integrated with a
    fixed-step solver at the same `dt_s` as the frontend trajectory
    builder. The recorded `tau_*` columns are the reference torques.
-4. **Manifest.** The exact `RobotSpec` used by Simscape (including
-   inertials) is exported as
-   `*_reproducibility_manifest.json` and placed under
-   `ensayos/robodimm_cr{4,6}/robodimm_output/{demo,pro}/`. The
-   regression script prefers `demo/` then falls back to `pro/`
-   (`backend/test_regression.py:21-27`).
-5. **Friction zeroing.** Simscape's reference does not include viscous
-   friction. The regression script explicitly sets
-   `frictionCoeffNmSPerRad = 0` on every joint before computing, so the
-   comparison is fair (`test_regression.py:118-120` and `252-253`).
+4. **Manifest.** The exact `RobotSpec` used by Simscape is stored under
+   `robodimm_paper/experiments/robodimm_cr{4,6}/robodimm_output/{demo,pro}/`.
+   The loader prefers `demo/` then falls back to `pro/`.
+5. **Damping protocol.** The default `E2E-VM05-v1` verification requires and
+   preserves `0.5 N m/(rad/s)` on every joint. `REG-ZD-v1` explicitly zeros
+   damping, but reads only from
+   `experiments/regression/REG-ZD-v1/`; it never reinterprets E2E files as
+   zero-damping evidence.
 6. **Inertial override.** The CR4 manifest's `inertials` may be sparse;
    the script applies the moderated Simscape masses
    (`CR4_SIMSCAPE_MASSES`, `test_regression.py:78-89`) to any body
    with `massKg == 0.0` before evaluation. This is the same
    `BODY_MASSES` table used inside `cr4_kkt.py:28-39`.
 
-The reference CSVs and the manifests live outside the `robodimm/`
-repository on purpose — they are the independent ground truth and
-should be regenerated, not committed alongside the code.
+The reference CSVs and manifests live outside `robodimm/` on purpose: they are
+independent evidence versioned in the paper repository.
 
 ---
 
@@ -61,26 +58,31 @@ should be regenerated, not committed alongside the code.
 ### 2.1 Prerequisites
 
 - The `robodimm-pro-backend` conda env active.
-- The sibling `ensayos/` directory present (see `../AGENTS.md` for the
-  workspace layout).
+- The two repositories cloned side by side as `robodimm/` and
+  `robodimm_paper/`. Override the latter with
+  `ROBODIMM_PAPER_EXPERIMENTS=/path/to/experiments` if needed.
 - For the optional re-generation of the Simscape CSVs, MATLAB R2026a
   with Simulink and Simscape Multibody™.
 
 ### 2.2 Run
 
 ```bash
-mamba run -n robodimm-pro-backend python backend/test_regression.py
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol E2E-VM05-v1
+
+# Available after the Phase 3 zero-damping capsule is exposed:
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol REG-ZD-v1
 ```
 
-Exit code `0` on success. Any per-joint or total RMSE above the
-thresholds listed in § 3 raises an `AssertionError` with the offending
-value.
+Exit code `0` means both robot comparisons ran and passed. Missing files are a
+hard error rather than a skip, so a no-data run can never print success.
 
 Sample output (numbers reproduced from `test_regression.py:140-153`):
 
 ```
---- Running CR4 KKT closed-chain regression test vs Simscape ---
-  Using manifest: ../ensayos/robodimm_cr4/robodimm_output/demo/..._manifest.json
+--- Running CR4 KKT regression vs Simscape (E2E-VM05-v1) ---
+  Using manifest: ../robodimm_paper/experiments/robodimm_cr4/robodimm_output/demo/..._manifest.json
   Comparing N samples...
   CR4 Joint-level RMSE (Nm):
     J1: 0.000912 Nm  (max abs: 0.004201 Nm)
@@ -97,7 +99,7 @@ Sample output (numbers reproduced from `test_regression.py:140-153`):
   ✅ Sparse inertials correctly fall back to BODY_MASSES!
   ✅ Custom geometry build and compute passed!
 
---- Running CR6 serial open-chain regression test vs Simscape ---
+--- Running CR6 serial regression vs Simscape (E2E-VM05-v1) ---
   Comparing N samples...
   CR6 Joint-level RMSE (Nm):
     J1: 3.71e-13 Nm  (max abs: 1.18e-12 Nm)
@@ -117,12 +119,12 @@ Sample output (numbers reproduced from `test_regression.py:140-153`):
 🎉 ALL REGRESSION TESTS PASSED SUCCESSFULLY!
 ```
 
-### 2.3 Skipping or sub-selecting tests
+### 2.3 Protocol isolation
 
-The script intentionally has no flags. To re-run only CR4, comment out
-the `test_cr6_serial_regression()` call on line 348 of
-`backend/test_regression.py`. To swap the reference CSVs, drop new files
-into `ensayos/robodimm_cr{4,6}/results/` with the same column names.
+The `--protocol` flag selects a fixed data location and damping rule. Do not
+copy, rename, or reuse one protocol's CSVs under the other protocol. To point at
+a different paper checkout, set `ROBODIMM_PAPER_EXPERIMENTS`; expected relative
+paths and filenames remain unchanged.
 
 ---
 
@@ -146,9 +148,10 @@ The CR4 acceptance criteria enforced by `test_regression.py:148-152`:
 | J4 | 0.02 Nm | Single-DoF disk revolute; expected near floating-point. |
 | Total | 0.3 Nm | Aggregate KKT accuracy across the 4-DoF user space. |
 
-The residuals come from the KKT linear solve
-(`np.linalg.lstsq`) and the central-difference Jacobian
-(`eps = 1e-6` in `mapped_jacobian`).
+The residuals come from the KKT least-squares solve and the user-to-cut-tree
+central differences. The frozen five-step sensitivity campaign selects
+`1e-4 rad` for both mapping operations; see
+`backend/test_cr4_fd_sensitivity.py` and `docs/math_foundations.md` § 3.9.
 
 ### 3.2 CR6 — open-chain Newton–Euler
 
@@ -177,8 +180,9 @@ CR6 has no passive joints; the RNEA output already *is* the actuated
 torque. CR4 has six passive joints that must be eliminated via the KKT
 projection. Two numerical steps contribute to the ~10⁻¹ Nm residual:
 
-- The cut-tree mapping uses central differences
-  (`eps = 1e-6` rad) for $\partial q^{\text{cut}}/\partial q^{\text{user}}$.
+- The cut-tree mapping uses the selected `1e-4 rad` common step for
+  $\partial q^{\text{cut}}/\partial q^{\text{user}}$ and its directional
+  derivative.
 - The KKT linear solve
   $J_{c,p}^\top \lambda = -\tau_p^{\text{open}}$ is a least-squares
   solve over nine constraints in six passive coordinates (rank
@@ -191,9 +195,9 @@ Both contributions are bounded well below the 0.3 Nm target.
 
 ## 4. Targeted unit tests in the regression script
 
-Beyond the RMSE comparison, `test_regression.py` exercises a set of
-properties that must hold even if the reference CSVs are absent. They
-guard against regressions in the model construction.
+Beyond the RMSE comparison, `test_regression.py` exercises properties that
+guard model construction. They run after the relevant manifest and CSV have
+been loaded; missing reference inputs fail the command before feature tests.
 
 ### 4.1 CR4 feature tests (`_test_cr4_specific_features`)
 
@@ -201,7 +205,7 @@ guard against regressions in the model construction.
 |---|---|---|
 | SWING COM offset | $\mathrm{lever} = (O - A) + \mathrm{com}_{\mathrm{SWING}}$ | Coordinate-frame shift on the swing body. |
 | Payload fusion at J4 | $m_{J_4} = m_{\mathrm{DISK}} + m_{\mathrm{payload}}$ | End-effector mass concatenation. |
-| J4 sign convention | $\tau_{J_4}(0) \approx 0$ at home and at pure spin (no friction). | Vertical-axis re-alignment sign flip. |
+| J4 sign convention | $\tau_{J_4}(0) \approx 0$ at home; pure-spin torque matches the selected viscous coefficient. | Vertical-axis sign and damping protocol. |
 | Sparse inertials | $\tau_{J_3} > 100\,\mathrm{Nm}$ with empty `inertials` | `BODY_MASSES` fallback (no zero-mass bodies). |
 | Custom geometry | Custom hardpoint offsets still build and produce 4 torques. | Generic geometry build path. |
 
@@ -214,10 +218,9 @@ guard against regressions in the model construction.
 | Payload contribution | $\lVert \tau - \tau_{\mathrm{no\;pay}} \rVert_\infty > 0.1$ (when payload > 0). | Payload COM and inertia are added to J6. |
 | `theta_offset` not duplicated | $\tau_{J_2} > 100\,\mathrm{Nm}$ at $q = 0$ with $\theta_{\mathrm{offset}} = -\pi/2$ | FK does not double-apply the joint offset. |
 
-All ten feature tests are independent of the Simscape reference and
-will run as long as the manifest is present. They are the right
-baseline to run on every PR; the RMSE comparison is a heavier,
-data-gated test for releases.
+The feature assertions are mathematically independent of reference torques but
+share the loaded manifest. The RMSE comparison remains the heavier data-gated
+release check.
 
 ---
 
@@ -227,9 +230,9 @@ There is no GitHub Actions workflow checked into the repository
 (`.github/` is not present). To wire the suite into CI, add a job that:
 
 1. Sets up the `robodimm-pro-backend` conda env from `environment.yml`.
-2. Installs the sibling `ensayos/` reference data (LFS or artifact
-   download).
-3. Runs `python backend/test_regression.py` and fails on non-zero exit.
+2. Checks out the sibling `robodimm_paper` reference data.
+3. Runs `python backend/test_regression.py --protocol E2E-VM05-v1` and fails
+   on non-zero exit.
 
 The script returns exit code `0` on success and `1` on any
 `AssertionError` (`test_regression.py:351-353`).
@@ -238,6 +241,11 @@ The script returns exit code `0` on success and `1` on any
 
 ## 6. Summary
 
+The table below summarizes the archived submitted comparison and is not the
+final 2026 revision benchmark. The revision protocol records a known CR4
+geometry discrepancy in that archive, so final evidence must be regenerated
+after the candidate source commit is frozen.
+
 | Metric | CR4 (KKT) | CR6 (RNEA) |
 |---|---:|---:|
 | Solver | Pinocchio RNEA on cut tree + KKT projection | Pinocchio RNEA |
@@ -245,13 +253,9 @@ The script returns exit code `0` on success and `1` on any
 | **Total RMSE** | **0.245 Nm** | **9.2 × 10⁻¹³ Nm** |
 | Acceptance threshold | 0.3 Nm | 0.01 Nm |
 | Reference source | Simscape Multibody™ | Simscape Multibody™ |
-| Reproducibility manifest schema | `*_reproducibility_manifest.json` (in `ensayos/`) | same |
+| Reproducibility manifest schema | `*_reproducibility_manifest.json` (paper experiments) | same |
 | Determinism | Single-pass; cached model, no iteration | Single-pass; pure function of $(q,\dot q,\ddot q)$ |
 
-The CR4 KKT implementation matches Simscape to ~0.25 Nm aggregate
-precision despite the closed-chain projection, well within the
-required tolerance for an actuator-sizing pass/fail decision (where
-the smallest catalog margin is typically a factor of 1.5 or more). The
-CR6 RNEA matches Simscape to floating-point precision, confirming
-that no numerical drift is introduced by the Python serial
-implementation.
+The archived CR4 comparison is within its retained source-regression threshold;
+the archived CR6 comparison is at floating-point precision. Neither result by
+itself validates actuator procurement or replaces the frozen revision matrix.
