@@ -250,14 +250,17 @@ mamba run -n robodimm-pro-backend python -m unittest \
 mamba run -n robodimm-pro-backend python backend/test_cr4_fd_sensitivity.py
 mamba run -n robodimm-pro-backend python backend/test_regression.py \
   --protocol E2E-VM05-v1
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol REG-ZD-v1
 ```
 
 It loads Simscape-generated reference CSVs and the corresponding
-reproducibility manifests from the sibling
-`../robodimm_paper/experiments/archive/submitted-validation-f33a676/`
-`E2E-VM05-v1/robodimm_cr{4,6}/` directories in the workspace. See
-`docs/validation_benchmarks.md` for the expected RMSE thresholds and the
-methodology.
+reproducibility manifests from the sibling paper repository. The
+`E2E-VM05-v1` command uses the archived 0.5-damping tree under
+`experiments/archive/submitted-validation-f33a676/E2E-VM05-v1/`; the
+`REG-ZD-v1` command uses the fresh zero-damping tree under
+`experiments/regression/REG-ZD-v1/`. See `docs/validation_benchmarks.md` for
+the protocol-specific RMSE results, thresholds, and methodology.
 
 ---
 

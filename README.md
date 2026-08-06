@@ -81,11 +81,17 @@ The full-length MP4 is available for download at
   calls are sub-millisecond on cached models.
 - **Viscous friction model.** A scalar $b_i\,\dot q_i$ term per joint,
   configured by `frictionCoeffNmSPerRad` on the joint limit. Omitted values
-  default to zero; bundled presets use 0.5 N m/(rad/s).
-- **Validation against Simscape.** The submitted archive reports CR4 total
-  RMSE of **0.245 Nm** and CR6 agreement of **9.2 × 10⁻¹³ Nm**. These are
-  historical values, not the final 2026 revision matrix; see the validation
-  document for protocol and geometry qualifications.
+  default to zero. The `E2E-VM05-v1` benchmark uses
+  `0.5 N m/(rad/s)` on every tested joint; the separate `REG-ZD-v1`
+  mathematical regression uses exactly zero damping.
+- **Cross-software verification against Simscape.** For the archived
+  `E2E-VM05-v1` application regression (0.5 damping), PRO-vs-Simscape total
+  RMSE is **0.244639 Nm** for CR4 and approximately **1.15 × 10⁻¹² Nm** for
+  CR6. The complete archived workflow also reports CR6 DEMO-vs-Simscape RMSE
+  of **0.001427 Nm** under `E2E-VM05-v1`. Fresh `REG-ZD-v1` evidence generated
+  from application commit `d4736c9` (zero damping) reports PRO-vs-Simscape
+  totals of **0.0482381 Nm** for CR4 and **1.15198 × 10⁻¹² Nm** for CR6. See
+  the validation document for engine-pair, archive, and geometry qualifications.
 
 ---
 
@@ -98,7 +104,7 @@ The full-length MP4 is available for download at
 | Backend | Python 3.9–3.10, FastAPI ≥ 0.100, Uvicorn, Pydantic ≥ 2.0 |
 | Dynamics | Pinocchio 4.0.0 (Conda), NumPy ≥ 1.22, SciPy ≥ 1.8 |
 | Packaging | Docker / Docker Compose, nginx 1.27 |
-| Validation ground truth | MATLAB R2026a, Simulink, Simscape Multibody™ |
+| Cross-software reference | MATLAB R2026a, Simulink, Simscape Multibody™ |
 
 ---
 
@@ -111,7 +117,7 @@ The full-length MP4 is available for download at
 | 🔌 [`docs/api_reference.md`](./docs/api_reference.md) | Every FastAPI endpoint, full JSON request/response payloads, the SHA-256 model cache, the trajectory hash, the CORS allowlist |
 | 🎨 [`docs/frontend_guide.md`](./docs/frontend_guide.md) | Zustand store slices, Three.js scene factory, the CAD-aligned frame helper, the GLB station-object reconciler, the cancellable loader |
 | ⚙️ [`docs/sizing_methodology.md`](./docs/sizing_methodology.md) | The six pass/fail constraints (with formulas), per-candidate margin metrics, the four ranking objectives, a worked example |
-| 🧪 [`docs/validation_benchmarks.md`](./docs/validation_benchmarks.md) | Simscape comparison methodology, per-joint RMSE tables, the 0.245 Nm CR4 / 9.2e-13 Nm CR6 results, how to reproduce |
+| 🧪 [`docs/validation_benchmarks.md`](./docs/validation_benchmarks.md) | Simscape comparison methodology, protocol-specific `E2E-VM05-v1` and `REG-ZD-v1` RMSE tables, and reproduction commands |
 
 ---
 
@@ -174,14 +180,17 @@ mamba run -n robodimm-pro-backend python -m unittest \
 mamba run -n robodimm-pro-backend python backend/test_cr4_fd_sensitivity.py
 mamba run -n robodimm-pro-backend python backend/test_regression.py \
   --protocol E2E-VM05-v1
+mamba run -n robodimm-pro-backend python backend/test_regression.py \
+  --protocol REG-ZD-v1
 ```
 
 The Python regression script is **not** collected by `pytest` — it is
 invoked directly because it loads the Simscape CSVs and reproducibility
-manifests from the sibling
-`../robodimm_paper/experiments/archive/submitted-validation-f33a676/`
-`E2E-VM05-v1/robodimm_cr{4,6}/` directory. Missing inputs fail rather than
-being reported as a successful skip.
+manifests from the sibling paper repository. `E2E-VM05-v1` reads the archived
+`experiments/archive/submitted-validation-f33a676/E2E-VM05-v1/` tree and
+retains 0.5 damping; `REG-ZD-v1` reads the fresh
+`experiments/regression/REG-ZD-v1/` tree and applies zero damping. Missing
+inputs fail rather than being reported as a successful skip.
 
 ---
 

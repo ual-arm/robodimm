@@ -32,8 +32,8 @@ def _experiment_directories(protocol: str) -> Tuple[Path, Path]:
             / "E2E-VM05-v1"
         )
     elif protocol == "REG-ZD-v1":
-        # Phase 3 will expose the archived zero-damping fixtures under this
-        # unambiguous location. Never reinterpret E2E-VM05 files as REG-ZD.
+        # Fresh zero-damping evidence has its own unambiguous location. Never
+        # reinterpret archived E2E-VM05 files as REG-ZD.
         root = EXPERIMENTS_ROOT / "regression" / "REG-ZD-v1"
     else:
         raise ValueError(f"Unsupported damping protocol: {protocol}")
