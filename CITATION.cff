@@ -6,6 +6,7 @@ title: >-
   Robodimm: A web-based framework for trajectory-level dynamics and
   deterministic actuator sizing of industrial manipulators
 version: 1.1.0
+date-released: 2026-08-10
 type: software
 license: MIT
 doi: 10.5281/zenodo.21871830
