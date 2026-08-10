@@ -15,7 +15,7 @@ from backend.api import health, dynamics, packages
 app = FastAPI(
     title="Robodimm PRO Python Backend",
     description="Local dynamics calculation engine using Pinocchio and Kineforge libraries",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # Restricted CORS configuration

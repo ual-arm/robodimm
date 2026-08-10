@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: >-
+  If you use Robodimm in research, please cite this version and the associated
+  SoftwareX article.
+title: >-
+  Robodimm: A web-based framework for trajectory-level dynamics and
+  deterministic actuator sizing of industrial manipulators
+version: 1.1.0
+type: software
+license: MIT
+doi: 10.5281/zenodo.21871830
+authors:
+  - family-names: Torres
+    given-names: "J. L."
+  - family-names: "Muñoz"
+    given-names: "M."
+  - family-names: "Álvarez"
+    given-names: "J. D."
+  - family-names: Blanco
+    given-names: "J. L."
+  - family-names: Gimenez
+    given-names: "A."
+keywords:
+  - Actuator sizing
+  - Inverse dynamics
+  - Closed kinematic chains
+  - Web-based robotics software
+  - Cross-software verification
+repository-code: "https://github.com/ual-arm/robodimm"
+repository-artifact: "https://doi.org/10.5281/zenodo.21871830"
+url: "https://customrobotics.es"

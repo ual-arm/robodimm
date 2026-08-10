@@ -414,7 +414,7 @@ describe('Robodimm state store regression tests', () => {
 
       mockPingBackendUrl.mockResolvedValue({
         connected: true,
-        version: '1.0.0',
+        version: '1.1.0',
         pinocchioVersion: '2.6.0',
         licenseStatus: 'valid',
         capabilities: { CR4: {}, CR6: {} },
@@ -439,7 +439,7 @@ describe('Robodimm state store regression tests', () => {
 
       mockPingBackendUrl.mockResolvedValue({
         connected: true,
-        version: '1.0.0',
+        version: '1.1.0',
         pinocchioVersion: '2.6.0',
         licenseStatus: 'valid',
         capabilities: { CR4: {}, CR6: {} },
@@ -501,7 +501,7 @@ describe('Robodimm state store regression tests', () => {
         model_id: 'cr6_serial6_template.v1',
         manifest: {
           model_id: 'cr6_serial6_template.v1',
-          backend_version: '1.0.0',
+          backend_version: '1.1.0',
           pinocchio_version: '2.6.3',
           robot_hash: 'abc123hash',
           trajectory_hash: 'traj456hash'

@@ -18,7 +18,7 @@ ALLOWED_ORIGINS = [
 def health_check() -> Dict[str, Any]:
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "pinocchio_version": pin.__version__,
         "allowed_origins": ALLOWED_ORIGINS
     }

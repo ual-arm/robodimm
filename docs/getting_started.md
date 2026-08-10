@@ -152,7 +152,7 @@ sudo apache2ctl configtest && sudo systemctl reload apache2
 
 ```bash
 curl http://127.0.0.1:8001/api/health
-# → {"status":"ok","version":"1.0.0","pinocchio_version":"...","allowed_origins":[...]}
+# → {"status":"ok","version":"1.1.0","pinocchio_version":"...","allowed_origins":[...]}
 
 curl http://127.0.0.1:8001/api/capabilities
 # → {"capabilities":{"CR4":{"closed_chain_kkt":true},"CR6":{"serial_rnea":true}},"license_status":"dev_valid"}

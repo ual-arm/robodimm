@@ -64,7 +64,7 @@ def get_trajectory_hash(samples: list) -> str:
 def make_manifest(robot: dict, model_id: str, trajectory_hash: str = None) -> DynamicsManifestModel:
     return DynamicsManifestModel(
         model_id=model_id,
-        backend_version="1.0.0",
+        backend_version="1.1.0",
         pinocchio_version=pin.__version__,
         robot_hash=get_robot_hash(robot),
         trajectory_hash=trajectory_hash,

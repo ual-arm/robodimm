@@ -776,7 +776,7 @@ export const InspectorPanel: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-slate-200 mb-0.5">Download Local Backend</h4>
                     <p className="text-slate-400">
-                      Download the latest release package from GitHub at <a href="https://github.com/customrobotics/robodimm-pro-backend" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">robodimm-pro-backend</a>.
+                      Download the latest Robodimm release package from <a href="https://github.com/ual-arm/robodimm/releases/latest" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">GitHub Releases</a>.
                     </p>
                   </div>
                 </div>

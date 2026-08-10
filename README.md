@@ -239,7 +239,7 @@ Robodimm is released under the **MIT License**.
 ```
 MIT License
 
-Copyright (c) 2024–2026 Custom Robotics
+Copyright (c) 2024–2026 J. L. Torres, M. Muñoz, J. D. Álvarez, J. L. Blanco, and A. Gimenez
 ```
 
 See [`LICENSE`](./LICENSE) for the full text.
@@ -248,26 +248,26 @@ See [`LICENSE`](./LICENSE) for the full text.
 
 ## Citation
 
-If you use Robodimm in academic work, please cite the SoftwareX paper:
+If you use Robodimm in academic work, cite the exact software release using
+[`CITATION.cff`](./CITATION.cff) and the associated SoftwareX article. Until
+the journal assigns its final bibliographic identifiers, the software citation
+is:
 
 ```bibtex
-@article{robodimm2026softwarex,
-  author    = {{Custom Robotics}},
-  title     = {{Robodimm}: Interactive Robot Trajectory Programming and
-               Deterministic Actuator Sizing in the Browser with
-               {Pinocchio}-backed Inverse Dynamics},
-  journal   = {SoftwareX},
-  volume    = {XX},
-  pages     = {XXXXXX},
-  year      = {2026},
-  publisher = {Elsevier},
-  doi       = {10.1016/j.softx.2026.XXXXXX},
-  url       = {https://github.com/customrobotics/robodimm}
+@software{robodimm_v1_1_0,
+  author  = {Torres, J. L. and Muñoz, M. and Álvarez, J. D. and
+             Blanco, J. L. and Gimenez, A.},
+  title   = {{Robodimm}: A web-based framework for trajectory-level dynamics
+             and deterministic actuator sizing of industrial manipulators},
+  version = {1.1.0},
+  year    = {2026},
+  doi     = {10.5281/zenodo.21871830},
+  url     = {https://github.com/ual-arm/robodimm/tree/v1.1.0}
 }
 ```
 
 Software and accompanying Simscape reference data are versioned
-together; please pin a specific release tag (e.g. `v1.0.0`) when
+together; please pin the reviewed release tag (`v1.1.0`) when
 citing, and include fields from the `actuator_sizing_report.v2` envelope:
 `dynamics_source` identifies the engine (`demo_frontend`, `pro_cr4_kkt`, or
 `pro_cr6_serial`), while `source_commit` and the provenance hashes identify the
